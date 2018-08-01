@@ -3,15 +3,133 @@ from gbdxtools import Interface, CatalogImage
 import json
 import rasterio
 from rasterio.features import geometry_mask
-#from rasterio.mask import mask
 from shapely import geometry
 from shapely.geometry import shape
 import copy
 import geojson
 import numpy as np
+import collections
+from scipy import ndimage as ndi
+from skimage import filters, color, exposure
 from scipy.misc import imsave
 #from PIL import Image
 gbdx = Interface()
+
+rsi_dict = dict(arvi=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (NIR1 - (R - (B - R))) / (NIR1 + (R - (B - R))),
+                dd=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (2 * NIR1 - R) - (G - B),
+                gi2=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (B * -0.2848 + G * -0.2434 + R * -0.5436 + NIR1 * 0.7243 + NIR2 * 0.0840) * 5,
+                gndvi=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (NIR1 - G)/(NIR1 + G),
+                ndre=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (NIR1 - RE)/(NIR1 + RE),
+                ndvi=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (NIR1 - R)/(NIR1 + R),
+                ndvi35=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (G - R)/(G + R),
+                ndvi84=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (NIR2 - Y)/(NIR2 + Y),
+                nirry=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (NIR1)/(R + Y),
+                normnir=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: NIR1/(NIR1 + R + G),
+                psri=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (R - B)/ RE,
+                rey=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (RE - Y)/(RE + Y),
+                rvi=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: NIR1/R,
+                sa=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (((Y + R) * 0.35)/2) + ((0.7 * (NIR1 + NIR2))/ 2) - 0.69,
+                vi1=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (10000 * NIR1)/(RE) ** 2,
+                vire=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: NIR1/RE,
+                br=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (R/B) * (G/B) * (RE/B) * (NIR1/B),
+                gr=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: G/R,
+                rr=lambda COAST, B, G, Y, R, RE, NIR1, NIR2:(NIR1/R) * (G/R) * (NIR1/RE),
+                wvbi=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (COAST - RE)/(COAST + RE),
+                wvnhfd=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (RE - COAST)/(RE + COAST),
+                evi=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (2.5 * (NIR2 - R))/(NIR2 + 6 * R - 7.5 * B + 1),
+                savi=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: ((1 + 0.5) * (NIR2 - R))/ (NIR2 + R + 0.5),
+                msavi=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (2 * NIR2 + 1 - ((2 * NIR2 + 1) ** 2 - 8 * (NIR2 - R)) ** 0.5)/ 2,
+                bai=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: 1.0/((0.1 + R) ** 2 + 0.06 + NIR2),
+                rgi=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: R/G,
+                bri=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: B/R
+                )
+def calc_rsi(image):
+    """Remote sensing indices for vegetation, built-up, and bare soil."""
+
+    # roll axes to conventional row,col,depth
+    img = np.rollaxis(image, 0, 3)
+
+    # bands: Coastal(0), Blue(1), Green(2), Yellow(3), Red(4), Red-edge(5), NIR1(6), NIR2(7)) Multispectral
+    COAST = img[:, :, 0]
+    B = img[:, :, 1]
+    G = img[:, :, 2]
+    Y = img[:, :, 3]
+    R = img[:, :, 4]
+    RE = img[:, :, 5]
+    NIR1 = img[:, :, 6]
+    NIR2 = img[:, :, 7]
+
+    rsi_dict_ordered = collections.OrderedDict(sorted(rsi_dict.items(), key=lambda t: t[0]))
+
+    rsi = np.stack(
+        [value(COAST, B, G, Y, R, RE, NIR1, NIR2) for key, value in rsi_dict_ordered.items()],
+        axis=2)
+
+    return rsi
+
+def power(image, kernel):
+    # Normalize images for better comparison.
+    image = (image - image.mean())/image.std()
+    return np.sqrt(ndi.convolve(image, np.real(kernel), mode='wrap') ** 2 +
+                   ndi.convolve(image, np.imag(kernel), mode='wrap') ** 2)
+
+
+def calc_gabors(image, frequency=1, theta_vals=[0, 1, 2, 3]):
+    # convert to gray scale
+    image = image.astype(np.uint8)
+    rgb = np.dstack((image[2], image[3], image[5])) #B, G, R... correct?
+
+    img = exposure.equalize_hist(color.rgb2gray(rgb))
+    #img = exposure.equalize_hist(color.rgb2gray(image.rgb(blm=True))) #is blm necessary here?
+    results_list = []
+    for theta in theta_vals:
+        theta = theta / 4. * np.pi
+        kernel = filters.gabor_kernel(frequency, theta=theta)
+        # Save kernel and the power image for each image
+        results_list.append(power(img, kernel))
+
+    gabors = np.rollaxis(np.dstack([results_list]), 0, 3)
+
+    return gabors
+
+def pixels_as_features(image, include_gabors=True):
+    """Calculates remote sensing indices and gabor filters(optional).
+    Returns image features of image bands, remote sensing indices, and gabor filters."""
+
+    # roll axes to conventional row,col,depth
+    img = np.rollaxis(image, 0, 3)
+    rsi = calc_rsi(image)
+    if include_gabors is True:
+        gabors = calc_gabors(image)
+        stack = np.dstack([img, rsi, gabors])
+    else:
+        stack = np.dstack([img, rsi])
+
+    feats = stack.ravel().reshape(stack.shape[0] * stack.shape[1], stack.shape[2])
+
+    return feats
+
+def segment_as_feature(image, medoid=True, normalize=False, include_gabors=False):
+
+    feats = pixels_as_features(image, include_gabors=include_gabors)
+    if medoid is True:
+    # NOTE: I added in this new normalize argument to handle the issue with different
+    # variables having different scales. this helps ensure that the medoid is not affected
+    # by different scales of the input variables, RSI, gabors, etc..
+        if normalize is False:
+            norms = feats
+        else:
+            mins = feats.min(axis=0)
+            maxs = feats.max(axis=0)
+            norms = (feats - mins) / (maxs - mins)
+
+        medians = np.median(norms, axis=0)
+        dist = np.linalg.norm(norms - medians, axis=1)
+        feat = feats[np.argmin(dist), :]
+    else:
+        feat = np.mean(feats, axis=0)
+
+    return feat
 
 def geojson_to_polygons(js_):
     """Convert the geojson into Shapely Polygons.
@@ -19,8 +137,6 @@ def geojson_to_polygons(js_):
     Mark all building polygons labelled as ('yellow', False) and will be changed later."""
 
     polys = []
-    #burnt_polys = []
-    #building_polys = []
     for i, feat in enumerate(js_['features']):
         o = {
             "coordinates": feat['geometry']['coordinates'],
@@ -38,13 +154,6 @@ def geojson_to_polygons(js_):
 
     return polys
 
-
-        # if feat['properties']['color'] == 'red':  # red for the burnt region
-        #     burnt_polys.append(g2)
-        # else:  # for the building poly
-        #     building_polys.append([g2, [feat['properties']['BuildingID'], 'yellow',
-        #                                 False]])  # mark building polygons as 'yellow' for non-burnt for now
-    #return burnt_polys, building_polys
 
 def get_segment_masks(image, polys):
     image_aoi_segs = []
@@ -101,29 +210,13 @@ def main():
     print image_aoi_blobs[0].shape
     print type(image_aoi_blobs[0])
 
+    print "\ncompute segment prediction..."
+    rsi_0 = segment_as_feature(image_aoi_blobs[0], include_gabors=True)
+
     blob0 = np.dstack((image_aoi_blobs[0][5], image_aoi_blobs[0][3], image_aoi_blobs[0][2]))
     print blob0.shape
-    imsave('./blob0.png', blob0)
-    #im = Image.fromarray(blob0)
-    #im.save('./blob0.jpeg')
-    #tif = image_aoi_blobs[0].geotiff(path='./blob0.tif', proj='EPSG:4326', bands=[4,2,1])
+    #imsave('./blob0.png', blob0)
     print "done."
-    #out = geometry_mask([js_copy['features'][0]['geometry']], out_shape=)
-
-
-    # with rasterio.open('./output.tif') as src:
-    #     out_image, out_transform = mask(src, [js_copy['features'][0]['geometry']], crop=True)
-    # out_meta = src.meta.copy()
-    #
-    # print "out image shape:", out_image.shape
-    #
-    # out_meta.update({'driver': 'GTiff',
-    #                  'height': out_image.shape[1],
-    #                  'width': out_image.shape[2],
-    #                  'transform': out_transform})
-    #
-    # with rasterio.open('./mask_0_nodata.tif', 'w', **out_meta) as dest:
-    #     dest.write(out_image)
 
 
 
