@@ -8,9 +8,15 @@ from shapely.geometry import shape
 import copy
 import geojson
 import numpy as np
+import numpy.ma as ma
 import collections
 from scipy import ndimage as ndi
 from skimage import filters, color, exposure
+import multiprocessing
+from sklearn.model_selection import train_test_split, RandomizedSearchCV, GridSearchCV
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import confusion_matrix, recall_score, precision_score, accuracy_score
+from pprint import pprint
 from scipy.misc import imsave
 #from PIL import Image
 gbdx = Interface()
@@ -155,7 +161,7 @@ def geojson_to_polygons(js_):
     return polys
 
 
-def get_segment_masks(image, polys):
+def get_segment_masks(image, polys, invert=True):
     image_aoi_segs = []
     seg_masks = []
 
@@ -163,7 +169,7 @@ def get_segment_masks(image, polys):
         bounds = poly.bounds
         image_aoi_seg = image.aoi(bbox=list(bounds))
         segment_mask = geometry_mask([poly], transform=image_aoi_seg.affine,
-                                 out_shape=(image_aoi_seg.shape[1], image_aoi_seg.shape[2]), invert=True)
+                                 out_shape=(image_aoi_seg.shape[1], image_aoi_seg.shape[2]), invert=invert)
 
         image_aoi_segs.append(image_aoi_seg)
         seg_masks.append(segment_mask)
@@ -172,6 +178,32 @@ def get_segment_masks(image, polys):
 
 def load_cat_image(catalog_id, bbox, pan=False):
     return CatalogImage(catalog_id, band_type="MS", pansharpen=pan, bbox=bbox)
+
+def clean_data(X_all, y_all):
+    # remove infs
+    if np.any(np.any(np.isinf(X_all))):
+        index_infs = np.argwhere(np.isinf(X_all))
+        index_ls = []
+        for i, j in index_infs:
+            index_ls.append(i)
+        mask_inf = np.isfinite(X_all).all(axis=1)
+        X_all = X_all[mask_inf, :]
+        y_all = np.delete(y_all, index_ls)
+
+    # remove NaNs
+    if np.any(np.any(np.isnan(X_all))):
+        index_nans = np.argwhere(np.isnan(X_all))
+        index_ls = []
+        for i, j in index_nans:
+            index_ls.append(i)
+        mask_inf = np.isfinite(X_all).all(axis=1)
+        X_all = X_all[mask_inf, :]
+        y_all = np.delete(y_all, index_ls)
+
+    X_all = X_all.astype(np.float32)
+    X_all = X_all[0:].astype(np.float32)
+
+    return X_all, y_all
 
 def main():
     print "\nloading CatalogImage..."
@@ -190,31 +222,58 @@ def main():
     print js['features'][0]['geometry'].keys()
     print type(js['features'][0].get('geometry'))
     print js['features'][0]['properties'].keys()
-    # for i, feat in enumerate(js['features']):
-    #     #     if feat['properties']['Tomnod_label'] == None:
 
     print "\nremove Tomnod_labels = None..."
     filtered_feats = filter(lambda x: x['properties']['Tomnod_label'] != None, js_copy['features'])
 
-    #print filtered_feats[0]['properties']['Tomnod_label']
     js_copy['features'] = filtered_feats
     print "new number of features:", len(js_copy['features'])
 
     ## load the raster, mask it by the polygon
     print "\nmasking image..."
     polys = geojson_to_polygons(js_copy)
-    image_aoi_segs, seg_masks = get_segment_masks(image, polys)
+    image_aoi_segs, seg_masks = get_segment_masks(image, polys, invert=False) #toggle the inversion if necessary... remember this should be set to True for multiplying image to mask
 
-    image_aoi_blobs = [np.multiply(aoi, seg_masks[i]) for i, aoi in enumerate(image_aoi_segs)]
+    image_aoi_blobs = [ma.array(aoi, mask=np.dstack((seg_masks[i],)*8)) for i, aoi in enumerate(image_aoi_segs)] #image masks instead of just multiplying the image to mask
+    #image_aoi_blobs = [np.multiply(aoi, seg_masks[i]) for i, aoi in enumerate(image_aoi_segs)]
     print len(image_aoi_blobs)
     print image_aoi_blobs[0].shape
     print type(image_aoi_blobs[0])
 
     print "\ncompute segment prediction..."
-    rsi_0 = segment_as_feature(image_aoi_blobs[0], include_gabors=True)
+    print "creating dataset"
+    #creating segments as features
+    p = multiprocessing.Pool(processes=4)
+    rsi_samples = [p.apply_async(segment_as_feature, args=(blob,), kwds={'include_gabors':True}) for blob in image_aoi_blobs] #so many Nans.. in like every sample. cleaning this is not feasible
+    rsi_samples_output = [p.get() for p in rsi_samples]
+    print len(rsi_samples_output)
 
-    blob0 = np.dstack((image_aoi_blobs[0][5], image_aoi_blobs[0][3], image_aoi_blobs[0][2]))
-    print blob0.shape
+    #entire dataset
+    X_all = np.vstack(rsi_samples_output)
+    y_all = np.array([x['properties']['Tomnod_label']==1 for x in js_copy['features']]).reshape(X_all.shape[0],1)
+
+    #clean data
+    X_all, y_all = clean_data(X_all, y_all)
+
+    #stratified split sampling
+    print "stratified split sampling"
+    X_train, X_test, y_train, y_test = train_test_split(X_all, y_all, test_size=0.33, stratify=y_all, random_state=42)
+
+    #create, train, and test model
+    classifier = RandomForestClassifier(n_estimators=50, max_features="sqrt", max_depth=None, min_samples_split=2, bootstrap=True, n_jobs=-1)
+    print "Parameters currently in use:"
+    pprint(classifier.get_params())
+    print "training model"
+    classifier.fit(X_train, y_train)
+    print classifier.score(X_train, y_train)
+    print "testing model"
+    predictions = classifier.predict(X_test)
+    trues = list(np.hstack(y_test))
+    print "\taccuracy =", accuracy_score(predictions, trues)
+    print "\tprecision =", precision_score(predictions, trues)
+    print "\trecall =", recall_score(predictions, trues)
+    # blob0 = np.dstack((image_aoi_blobs[0][5], image_aoi_blobs[0][3], image_aoi_blobs[0][2]))
+    # print blob0.shape
     #imsave('./blob0.png', blob0)
     print "done."
 
