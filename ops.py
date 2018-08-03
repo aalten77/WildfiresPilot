@@ -18,6 +18,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import confusion_matrix, recall_score, precision_score, accuracy_score
 from pprint import pprint
 from scipy.misc import imsave
+from readjsonfromurl import fetch_jsons
 #from PIL import Image
 gbdx = Interface()
 
@@ -214,24 +215,38 @@ def main():
     print image.affine
 
     print "\nreading geojson..."
-    with open('data/Tubbs/Fountaingrove/Fountaingrove.json') as data_file:
-        js = json.load(data_file)
+    #read jsons from remote
+    js_list = fetch_jsons()
+    #js = js_list[0]
+    # with open('data/Tubbs/Fountaingrove/Fountaingrove.json') as data_file:
+    #     js = json.load(data_file)
 
-    js_copy = copy.deepcopy(js)
-    print "current number of features:", len(js['features'])
-    print js['features'][0]['geometry'].keys()
-    print type(js['features'][0].get('geometry'))
-    print js['features'][0]['properties'].keys()
+    #make deep copies of the js
+    # js_copies = []
+    # for js in js_list:
+    #     js_copies.append(copy.deepcopy(js))
+
+    #js_copy = copy.deepcopy(js)
+    print "current number of features:", sum(len(js['features']) for js in js_list)
+    # print js['features'][0]['geometry'].keys()
+    # print type(js['features'][0].get('geometry'))
+    # print js['features'][0]['properties'].keys()
 
     print "\nremove Tomnod_labels = None..."
-    filtered_feats = filter(lambda x: x['properties']['Tomnod_label'] != None, js_copy['features'])
+    filtered_feats_list = []
+    for js in js_list:
+        filtered_feats = filter(lambda x: x['properties']['Tomnod_label'] != None, js['features'])
+        filtered_feats_list.append(filtered_feats)
 
-    js_copy['features'] = filtered_feats
-    print "new number of features:", len(js_copy['features'])
+    for i, js in enumerate(js_list):
+        js['features'] = filtered_feats_list[i]
+    print "new number of features:", sum(len(js['features']) for js in js_list)
 
     ## load the raster, mask it by the polygon
     print "\nmasking image..."
-    polys = geojson_to_polygons(js_copy)
+    polys = geojson_to_polygons(js_list[0])
+    for i in range(1, len(js_list)):
+        polys.extend(geojson_to_polygons(js_list[i]))
     image_aoi_segs, seg_masks = get_segment_masks(image, polys, invert=False) #toggle the inversion if necessary... remember this should be set to True for multiplying image to mask
 
     image_aoi_blobs = [ma.array(aoi, mask=np.dstack((seg_masks[i],)*8)) for i, aoi in enumerate(image_aoi_segs)] #image masks instead of just multiplying the image to mask
@@ -244,13 +259,18 @@ def main():
     print "creating dataset"
     #creating segments as features
     p = multiprocessing.Pool(processes=4)
-    rsi_samples = [p.apply_async(segment_as_feature, args=(blob,), kwds={'include_gabors':True}) for blob in image_aoi_blobs] #so many Nans.. in like every sample. cleaning this is not feasible
+    rsi_samples = [p.apply_async(segment_as_feature, args=(blob,), kwds={'include_gabors':True}) for blob in image_aoi_blobs]
     rsi_samples_output = [p.get() for p in rsi_samples]
     print len(rsi_samples_output)
 
     #entire dataset
     X_all = np.vstack(rsi_samples_output)
-    y_all = np.array([x['properties']['Tomnod_label']==1 for x in js_copy['features']]).reshape(X_all.shape[0],1)
+    y_all = [x['properties']['Tomnod_label']==1 for x in js_list[0]['features']]
+    for i in range(1, len(js_list)):
+        y_all.extend([x['properties']['Tomnod_label']==1 for x in js_list[i]['features']])
+    y_all = np.array(y_all)
+    y_all.reshape(X_all.shape[0], 1)
+    #y_all = np.array([x['properties']['Tomnod_label']==1 for x in js_copy['features']]).reshape(X_all.shape[0],1)
 
     #clean data
     X_all, y_all = clean_data(X_all, y_all)
