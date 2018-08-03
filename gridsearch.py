@@ -1,8 +1,10 @@
 from collections import OrderedDict
 from itertools import product
 import numpy as np
-from sklearn.model_selection import GridSearchCV
+from scipy.stats import randint
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from sklearn.ensemble import RandomForestClassifier
+from time import time
 import cPickle
 
 
@@ -37,15 +39,29 @@ def grid_search(X_train, X_test, y_train, y_test):
                    'min_samples_split': min_samples_split,
                    'min_samples_leaf': min_samples_leaf,
                    'bootstrap': bootstrap}
+    param_dist = {
+        'n_estimators': randint(50, 2000),
+        'max_features': max_features,
+        'max_depth': randint(10, 110),
+        'min_samples_split': min_samples_split,
+        'min_samples_leaf': min_samples_leaf,
+        'bootstrap': bootstrap
+    }
 
     # Create a base model
     rf = RandomForestClassifier(random_state=42)
 
     # Instantiate the grid search model
-    grid_search = GridSearchCV(estimator = rf, param_grid=param_grid, cv=10, n_jobs=-1, verbose=2, return_train_score=True)
+    #grid_search = GridSearchCV(estimator=rf, param_grid=param_grid, cv=10, n_jobs=-1, verbose=2, return_train_score=True)
+    n_iter_search = 1000
+    grid_search = RandomizedSearchCV(estimator=rf, param_distributions=param_dist, n_iter=n_iter_search, cv=10, verbose=2, random_state=42, n_jobs=-1)#randomized
 
+    start = time()
     #Fit the grid search to the data
     grid_search.fit(X_train, y_train)
+
+    print "RandomizedSearchCV took %.2f seconds for %d candidates"
+    " parameter settings." % ((time() - start), n_iter_search)
 
     grid_best_params = grid_search.best_params_
     print grid_best_params
