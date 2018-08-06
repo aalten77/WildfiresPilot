@@ -13,12 +13,14 @@ import collections
 from scipy import ndimage as ndi
 from skimage import filters, color, exposure
 import multiprocessing
-from sklearn.model_selection import train_test_split, RandomizedSearchCV, GridSearchCV
+from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import confusion_matrix, recall_score, precision_score, accuracy_score
 from pprint import pprint
 from scipy.misc import imsave
 from readjsonfromurl import fetch_jsons
+from gridsearch import grid_search
+import sys
 #from PIL import Image
 gbdx = Interface()
 
@@ -177,7 +179,9 @@ def get_segment_masks(image, polys, invert=True):
 
     return image_aoi_segs, seg_masks
 
-def load_cat_image(catalog_id, bbox, pan=False):
+def load_cat_image(catalog_id, bbox=None, pan=False):
+    if bbox == None:
+        return CatalogImage(catalog_id, band_type="MS", pansharpen=pan)
     return CatalogImage(catalog_id, band_type="MS", pansharpen=pan, bbox=bbox)
 
 def clean_data(X_all, y_all):
@@ -207,30 +211,46 @@ def clean_data(X_all, y_all):
     return X_all, y_all
 
 def main():
-    print "\nloading CatalogImage..."
-    image = load_cat_image('1040010038A0A900', (-122.711, 38.476, -122.686, 38.494), pan=True) #fountaingrove - big
-    print image.shape
-    print image.ipe.metadata['image']['acquisitionDate']
-    print image.ipe.metadata['image']['offNadirAngle']
-    print image.affine
-
     print "\nreading geojson..."
-    #read jsons from remote
+    # read jsons from remote
     js_list = fetch_jsons()
-    #js = js_list[0]
-    # with open('data/Tubbs/Fountaingrove/Fountaingrove.json') as data_file:
-    #     js = json.load(data_file)
 
-    #make deep copies of the js
-    # js_copies = []
-    # for js in js_list:
-    #     js_copies.append(copy.deepcopy(js))
+    #validate json for all geometries and correct labels:
+    flag = -999
+    ordinal = lambda n: "%d%s" % (n, "tsnrhtdd"[(n / 10 % 10 != 1) * (n % 10 < 4) * n % 10::4]) #from Gareth on codegolf: https://codegolf.stackexchange.com/questions/4707/outputting-ordinal-numbers-1st-2nd-3rd#answer-4712
+    for j, js in enumerate(js_list):
+        for i, feat in enumerate(js['features']):
+            #print i
+            if feat['properties']['Tomnod_label'] != True and feat['properties']['Tomnod_label'] != False and feat['properties']['Tomnod_label'] is not None:
+                print >> sys.stderr, "Incorrect Tomnod_label at feature element {} in {} json".format(i, ordinal(j))
+                flag = 1
 
-    #js_copy = copy.deepcopy(js)
+            try:
+                if feat['geometry']['type'] is not None and feat['geometry']['type'] != "Polygon":
+                    print >> sys.stderr, "Incorrect feature type, must be Polygon only! Discovered at feature element {} in {} json".format(i, ordinal(j))
+                    flag = 1
+            except TypeError:
+                print >> sys.stderr, "If this is of any concern, a NoneType for geometry type occured at feature element {} in {} json.".format(i, ordinal(j))
+                continue
+
+
+    #if flag is activated then do not execute rest
+    if flag == 1:
+        return
+
+    print "\nloading CatalogImage..."
+    image_list = [load_cat_image(js['properties']['catalog_id'], pan=True) for js in js_list]
+    # TODO: remove bbox, read in catid from geojsons
+    # image = load_cat_image('1040010038A0A900', (-122.711, 38.476, -122.686, 38.494), pan=True) #fountaingrove - big
+    # print image.shape
+    # print image.ipe.metadata['image']['acquisitionDate']
+    # print image.ipe.metadata['image']['offNadirAngle']
+    # print image.affine
+
+
+    # TODO: validate json function here -> confirm all geometries are Polygons, expect properties labels "True/False/None"
+
     print "current number of features:", sum(len(js['features']) for js in js_list)
-    # print js['features'][0]['geometry'].keys()
-    # print type(js['features'][0].get('geometry'))
-    # print js['features'][0]['properties'].keys()
 
     print "\nremove Tomnod_labels = None..."
     filtered_feats_list = []
@@ -255,6 +275,7 @@ def main():
     print image_aoi_blobs[0].shape
     print type(image_aoi_blobs[0])
 
+    # TODO: debug masked array in segments/pixels as features
     print "\ncompute segment prediction..."
     print "creating dataset"
     #creating segments as features
@@ -273,28 +294,35 @@ def main():
     #y_all = np.array([x['properties']['Tomnod_label']==1 for x in js_copy['features']]).reshape(X_all.shape[0],1)
 
     #clean data
+    # TODO: save out X_all, y_all -> check for html or local file path
     X_all, y_all = clean_data(X_all, y_all)
 
+    # TODO: below this goes into train model script
     #stratified split sampling
     print "stratified split sampling"
-    X_train, X_test, y_train, y_test = train_test_split(X_all, y_all, test_size=0.33, stratify=y_all, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X_all, y_all, test_size=0.20, stratify=y_all, random_state=42)
 
     #create, train, and test model
-    classifier = RandomForestClassifier(n_estimators=50, max_features="sqrt", max_depth=None, min_samples_split=2, bootstrap=True, n_jobs=-1)
-    print "Parameters currently in use:"
-    pprint(classifier.get_params())
-    print "training model"
-    classifier.fit(X_train, y_train)
-    print classifier.score(X_train, y_train)
-    print "testing model"
-    predictions = classifier.predict(X_test)
-    trues = list(np.hstack(y_test))
-    print "\taccuracy =", accuracy_score(predictions, trues)
-    print "\tprecision =", precision_score(predictions, trues)
-    print "\trecall =", recall_score(predictions, trues)
+    # classifier = RandomForestClassifier(n_estimators=50, max_features="sqrt", max_depth=None, min_samples_split=2, bootstrap=True, n_jobs=-1)
+    # print "Parameters currently in use:"
+    # pprint(classifier.get_params())
+    # print "training model"
+    # classifier.fit(X_train, y_train)
+    # print classifier.score(X_train, y_train)
+    # print "testing model"
+    # predictions = classifier.predict(X_test)
+    # trues = list(np.hstack(y_test))
+    # print "\taccuracy =", accuracy_score(predictions, trues)
+    # print "\tprecision =", precision_score(predictions, trues)
+    # print "\trecall =", recall_score(predictions, trues)
+
+    #save a image segment
     # blob0 = np.dstack((image_aoi_blobs[0][5], image_aoi_blobs[0][3], image_aoi_blobs[0][2]))
     # print blob0.shape
     #imsave('./blob0.png', blob0)
+
+    better_model = grid_search(X_train, X_test, y_train, y_test)
+
     print "done."
 
 
