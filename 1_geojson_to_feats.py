@@ -18,9 +18,10 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import confusion_matrix, recall_score, precision_score, accuracy_score
 from pprint import pprint
 from scipy.misc import imsave
-from readjsonfromurl import fetch_jsons
+from readjsonfromurl import fetch_jsons, get_remote_links
 from gridsearch import grid_search
-import sys
+import sys, getopt
+import os
 #from PIL import Image
 gbdx = Interface()
 
@@ -210,49 +211,88 @@ def clean_data(X_all, y_all):
 
     return X_all, y_all
 
-def main():
-    print "\nreading geojson..."
-    # read jsons from remote
-    js_list = fetch_jsons()
-
-    #validate json for all geometries and correct labels:
+def validate_jsons(js_list):
     flag = -999
-    ordinal = lambda n: "%d%s" % (n, "tsnrhtdd"[(n / 10 % 10 != 1) * (n % 10 < 4) * n % 10::4]) #from Gareth on codegolf: https://codegolf.stackexchange.com/questions/4707/outputting-ordinal-numbers-1st-2nd-3rd#answer-4712
+    ordinal = lambda n: "%d%s" % (n, "tsnrhtdd"[(n / 10 % 10 != 1) * (
+                n % 10 < 4) * n % 10::4])  # from Gareth on codegolf: https://codegolf.stackexchange.com/questions/4707/outputting-ordinal-numbers-1st-2nd-3rd#answer-4712
     for j, js in enumerate(js_list):
         for i, feat in enumerate(js['features']):
-            #print i
-            if feat['properties']['Tomnod_label'] != True and feat['properties']['Tomnod_label'] != False and feat['properties']['Tomnod_label'] is not None:
-                print >> sys.stderr, "Incorrect Tomnod_label at feature element {} in {} json".format(i, ordinal(j))
+            # print i
+            if feat['properties']['Tomnod_label'] != True and feat['properties']['Tomnod_label'] != False and \
+                    feat['properties']['Tomnod_label'] is not None:
+                print >> sys.stderr, "Incorrect Tomnod_label at feature element {} in {} json. Please go fix this.".format(
+                    i, ordinal(j))
                 flag = 1
 
             try:
                 if feat['geometry']['type'] is not None and feat['geometry']['type'] != "Polygon":
-                    print >> sys.stderr, "Incorrect feature type, must be Polygon only! Discovered at feature element {} in {} json".format(i, ordinal(j))
+                    print >> sys.stderr, "Incorrect feature type, must be Polygon only! Discovered at feature element {} in {} json. Please go fix this.".format(
+                        i, ordinal(j + 1))
                     flag = 1
             except TypeError:
-                print >> sys.stderr, "If this is of any concern, a NoneType for geometry type occured at feature element {} in {} json.".format(i, ordinal(j))
+                print >> sys.stderr, "If this is of any concern, a NoneType for geometry type occured at feature element {} in {} json.".format(
+                    i, ordinal(j))
                 continue
+    return flag
 
+def create_feature_dataset(rsi_samples, js):
+    # entire dataset
+    X_all = np.vstack(rsi_samples)
+    y_all = [x['properties']['Tomnod_label'] == 1 for x in js['features']]
+    # for i in range(1, len(js_list)):
+    #     y_all.extend([x['properties']['Tomnod_label'] == 1 for x in js_list[i]['features']])
+    y_all = np.array(y_all)
+    y_all.reshape(X_all.shape[0], 1)
+    # y_all = np.array([x['properties']['Tomnod_label']==1 for x in js_copy['features']]).reshape(X_all.shape[0],1)
 
+    # clean data
+    # TODO: save out X_all, y_all -> check for html or local file path
+    X_all, y_all = clean_data(X_all, y_all)
+
+    return X_all, y_all
+
+def main(argv):
+
+    features_directory = './'
+    try:
+        opts, args = getopt.getopt(argv, "hi:", ['help', 'idir='])
+    except getopt.GetoptError:
+        print >> sys.stderr, '1_geojson_to_feats.py -i <directory_for_features>'
+        sys.exit(2)
+    for opt, arg in opts:
+        if opt == '-h':
+            print '1_geojson_to_feats.py -i <directory_for_features>'
+            sys.exit()
+        elif opt in ("-i", "--idir"):
+            features_directory = arg
+
+    if features_directory == './':
+        print 'OK, your features data will be stored in the current directory:', features_directory
+    else:
+        print 'OK, your features data will be stored in:', features_directory
+
+    print "\nfetching geojsons..."
+    # read jsons from remote
+    js_list = fetch_jsons()
+
+    # validate json for all geometries and correct labels:
+    flag = validate_jsons(js_list)
     #if flag is activated then do not execute rest
     if flag == 1:
         return
 
-    print "\nloading CatalogImage..."
+    print "\nloading CatalogImages..."
     image_list = [load_cat_image(js['properties']['catalog_id'], pan=True) for js in js_list]
-    # TODO: remove bbox, read in catid from geojsons
     # image = load_cat_image('1040010038A0A900', (-122.711, 38.476, -122.686, 38.494), pan=True) #fountaingrove - big
     # print image.shape
     # print image.ipe.metadata['image']['acquisitionDate']
     # print image.ipe.metadata['image']['offNadirAngle']
     # print image.affine
 
-
-    # TODO: validate json function here -> confirm all geometries are Polygons, expect properties labels "True/False/None"
-
     print "current number of features:", sum(len(js['features']) for js in js_list)
 
-    print "\nremove Tomnod_labels = None..."
+    # remove any Tomnod labels that are None
+    print "\nremoving Tomnod_labels = None..."
     filtered_feats_list = []
     for js in js_list:
         filtered_feats = filter(lambda x: x['properties']['Tomnod_label'] != None, js['features'])
@@ -263,39 +303,69 @@ def main():
     print "new number of features:", sum(len(js['features']) for js in js_list)
 
     ## load the raster, mask it by the polygon
-    print "\nmasking image..."
-    polys = geojson_to_polygons(js_list[0])
-    for i in range(1, len(js_list)):
-        polys.extend(geojson_to_polygons(js_list[i]))
-    image_aoi_segs, seg_masks = get_segment_masks(image, polys, invert=False) #toggle the inversion if necessary... remember this should be set to True for multiplying image to mask
+    print "\nmasking images..."
+    polys = {}
+    #polys = {0: geojson_to_polygons(js_list[0])}
+    # polys = geojson_to_polygons(js_list[0])
+    for i in range(0, len(js_list)):
+        polys.update({i: geojson_to_polygons(js_list[i])})
+    #     polys.extend(geojson_to_polygons(js_list[i]))
 
-    image_aoi_blobs = [ma.array(aoi, mask=np.dstack((seg_masks[i],)*8)) for i, aoi in enumerate(image_aoi_segs)] #image masks instead of just multiplying the image to mask
+    image_segs_masks_dict = {}
+    for i in range(0, len(image_list)):
+        image_aoi_segs, seg_masks = get_segment_masks(image_list[i], polys.get(i), invert=False)
+        image_segs_masks_dict.update({i: {'segs': image_aoi_segs, 'masks': seg_masks}})
+    # image_aoi_segs, seg_masks = get_segment_masks(image, polys, invert=False) #toggle the inversion if necessary... remember this should be set to True for multiplying image to mask
+
+    image_aoi_blobs_dict = {}
+    #p = multiprocessing.Pool(processes=4)
+    for key, val in image_segs_masks_dict.iteritems():
+        #blobs_list = [p.apply_async(ma.array, args=(aoi,), kwds={'mask':np.dstack((val['masks'][i],)*8)}) for i, aoi in enumerate(val['segs'])]
+        #blobs_output = [p.get() for p in blobs_list]
+        #image_aoi_blobs_dict.update({key: blobs_output})
+        masked_array = [ma.array(aoi, mask=np.dstack((val['masks'][i],)*8)) for i, aoi in enumerate(val['segs'])]
+        image_aoi_blobs_dict.update({key: masked_array})
+    #image_aoi_blobs = [ma.array(aoi, mask=np.dstack((seg_masks[i],)*8)) for i, aoi in enumerate(image_aoi_segs)] #image masks instead of just multiplying the image to mask
     #image_aoi_blobs = [np.multiply(aoi, seg_masks[i]) for i, aoi in enumerate(image_aoi_segs)]
-    print len(image_aoi_blobs)
-    print image_aoi_blobs[0].shape
-    print type(image_aoi_blobs[0])
+    # print len(image_aoi_blobs)
+    # print image_aoi_blobs[0].shape
+    # print type(image_aoi_blobs[0])
 
-    # TODO: debug masked array in segments/pixels as features
-    print "\ncompute segment prediction..."
-    print "creating dataset"
+    # TODO: debug masked array in segments/pixels as features, make sure the masked numbers are not playing with the computation
+    #print "\ncompute segment prediction..."
+    print "\ncreating features dataset..."
+    rsi_samples_output_dict = {}
     #creating segments as features
     p = multiprocessing.Pool(processes=4)
-    rsi_samples = [p.apply_async(segment_as_feature, args=(blob,), kwds={'include_gabors':True}) for blob in image_aoi_blobs]
-    rsi_samples_output = [p.get() for p in rsi_samples]
-    print len(rsi_samples_output)
+    for key, val in image_aoi_blobs_dict:
+        rsi_samples = [p.apply_async(segment_as_feature, args=(blob,), kwds={'include_gabors':True}) for blob in val]
+        rsi_samples_output = [p.get() for p in rsi_samples]
+        rsi_samples_output_dict.update({key: rsi_samples_output})
+    #print len(rsi_samples_output)
 
     #entire dataset
-    X_all = np.vstack(rsi_samples_output)
-    y_all = [x['properties']['Tomnod_label']==1 for x in js_list[0]['features']]
-    for i in range(1, len(js_list)):
-        y_all.extend([x['properties']['Tomnod_label']==1 for x in js_list[i]['features']])
-    y_all = np.array(y_all)
-    y_all.reshape(X_all.shape[0], 1)
-    #y_all = np.array([x['properties']['Tomnod_label']==1 for x in js_copy['features']]).reshape(X_all.shape[0],1)
+    X_all = {}
+    y_all = {}
+    for key, val in rsi_samples_output_dict:
+        X, y = create_feature_dataset(val, js_list[key])
+        X_all.update({key: X})
+        y_all.update({key: y})
 
-    #clean data
-    # TODO: save out X_all, y_all -> check for html or local file path
-    X_all, y_all = clean_data(X_all, y_all)
+    #save out the dataset
+    file_names = [r.split('/')[-1].replace('.json.zip','') for r in get_remote_links()]
+
+
+    # X_all = np.vstack(rsi_samples_output)
+    # y_all = [x['properties']['Tomnod_label']==1 for x in js_list[0]['features']]
+    # for i in range(1, len(js_list)):
+    #     y_all.extend([x['properties']['Tomnod_label']==1 for x in js_list[i]['features']])
+    # y_all = np.array(y_all)
+    # y_all.reshape(X_all.shape[0], 1)
+    # #y_all = np.array([x['properties']['Tomnod_label']==1 for x in js_copy['features']]).reshape(X_all.shape[0],1)
+    #
+    # #clean data
+    # # TODO: save out X_all, y_all -> check for html or local file path
+    # X_all, y_all = clean_data(X_all, y_all)
 
     # TODO: below this goes into train model script
     #stratified split sampling
@@ -323,9 +393,9 @@ def main():
 
     better_model = grid_search(X_train, X_test, y_train, y_test)
 
-    print "done."
+    print "\ndone."
 
 
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1:])
