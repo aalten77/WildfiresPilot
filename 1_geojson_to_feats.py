@@ -19,6 +19,7 @@ from sklearn.metrics import confusion_matrix, recall_score, precision_score, acc
 from pprint import pprint
 from scipy.misc import imsave
 from readjsonfromurl import fetch_jsons, get_remote_links
+from readjsonfromlocal import fetch_local_jsons, get_local_file_names
 from gridsearch import grid_search
 import sys, getopt
 import os
@@ -87,6 +88,7 @@ def power(image, kernel):
 def calc_gabors(image, frequency=1, theta_vals=[0, 1, 2, 3]):
     # convert to gray scale
     image = image.astype(np.uint8)
+    # TODO: ask Mike if this is correct for RGB stack
     rgb = np.dstack((image[2], image[3], image[5])) #B, G, R... correct?
 
     img = exposure.equalize_hist(color.rgb2gray(rgb))
@@ -246,7 +248,6 @@ def create_feature_dataset(rsi_samples, js):
     # y_all = np.array([x['properties']['Tomnod_label']==1 for x in js_copy['features']]).reshape(X_all.shape[0],1)
 
     # clean data
-    # TODO: save out X_all, y_all -> check for html or local file path
     X_all, y_all = clean_data(X_all, y_all)
 
     return X_all, y_all
@@ -255,15 +256,15 @@ def main(argv):
 
     features_directory = './'
     try:
-        opts, args = getopt.getopt(argv, "hi:", ['help', 'idir='])
+        opts, args = getopt.getopt(argv, "ho:", ['help', 'odir='])
     except getopt.GetoptError:
-        print >> sys.stderr, '1_geojson_to_feats.py -i <directory_for_features>'
+        print >> sys.stderr, '1_geojson_to_feats.py -o <directory_for_features>'
         sys.exit(2)
     for opt, arg in opts:
         if opt == '-h':
-            print '1_geojson_to_feats.py -i <directory_for_features>'
+            print '1_geojson_to_feats.py -o <directory_for_features>'
             sys.exit()
-        elif opt in ("-i", "--idir"):
+        elif opt in ("-o", "--odir"):
             features_directory = arg
 
     if features_directory == './':
@@ -271,9 +272,30 @@ def main(argv):
     else:
         print 'OK, your features data will be stored in:', features_directory
 
+    # answer = raw_input("Do you wish to continue? (y/n)")
+    # print answer
+
     print "\nfetching geojsons..."
-    # read jsons from remote
-    js_list = fetch_jsons()
+    # read jsons from remote and local
+    js_list = []
+    flag_answer = -999
+    #print ""
+    fetch_remote_answer =raw_input("Are you fetching from remote? (y/n)\n")
+    if fetch_remote_answer == 'y' or fetch_remote_answer == 'Y':
+        js_list.extend(fetch_local_jsons())
+        flag_answer = 1
+    #print ""
+    fetch_local_answer = raw_input("Are you fetching from local file system? (y/n)\n")
+    if fetch_local_answer == 'y' or fetch_local_answer == 'Y':
+        js_list.extend(fetch_jsons())
+        flag_answer = 1
+
+    #print ""
+    if flag_answer != 1:
+        print >> sys.stderr, "Try again, please select where to fetch geojsons."
+        return
+
+    print ""
 
     # validate json for all geometries and correct labels:
     flag = validate_jsons(js_list)
@@ -336,8 +358,8 @@ def main(argv):
     print "\ncreating features dataset..."
     rsi_samples_output_dict = {}
     #creating segments as features
-    p = multiprocessing.Pool(processes=4)
-    for key, val in image_aoi_blobs_dict:
+    for key, val in image_aoi_blobs_dict.items():
+        p = multiprocessing.Pool(processes=4)
         rsi_samples = [p.apply_async(segment_as_feature, args=(blob,), kwds={'include_gabors':True}) for blob in val]
         rsi_samples_output = [p.get() for p in rsi_samples]
         rsi_samples_output_dict.update({key: rsi_samples_output})
@@ -346,13 +368,44 @@ def main(argv):
     #entire dataset
     X_all = {}
     y_all = {}
-    for key, val in rsi_samples_output_dict:
+    for key, val in rsi_samples_output_dict.items():
         X, y = create_feature_dataset(val, js_list[key])
         X_all.update({key: X})
         y_all.update({key: y})
 
+    #X_all_ordered = collections.OrderedDict(sorted(X_all.items(), key=lambda t: t[0]))
+    #y_all_ordered = collections.OrderedDict(sorted(y_all.items(), key=lambda t: t[0]))
+
     #save out the dataset
-    file_names = [r.split('/')[-1].replace('.json.zip','') for r in get_remote_links()]
+    print "\nsaving the features to", features_directory
+    file_names = []
+    if fetch_remote_answer == 'y' or fetch_remote_answer == 'Y':
+        file_names.extend([r.split('/')[-1].replace('.json.zip','') for r in get_remote_links()])
+    if fetch_local_answer == 'y' or fetch_local_answer == 'Y':
+        file_names.extend([name.replace('.json.zip', '') for name in get_local_file_names()])
+    if not os.path.exists(features_directory):
+        os.makedirs(features_directory)
+    for key, file_name in enumerate(file_names):
+        path_X = features_directory+'/'+file_name+'_X_all'
+        path_y = features_directory+'/'+file_name+'_y_all'
+        if os.path.isfile(path_X):
+            print ""
+            answer = raw_input(path_X + " already exists, are you sure you want to overwrite? (y/n)")
+            if answer == 'y' or answer == 'Y':
+                X_all.get(key).dump(path_X)
+                continue
+            else:
+                continue
+        if os.path.isfile(path_y):
+            print ""
+            answer = raw_input(path_y + " already exists, are you sure you want to overwrite? (y/n)")
+            if answer == 'y' or answer == 'Y':
+                X_all.get(key).dump(path_X)
+                continue
+            else:
+                continue
+        X_all.get(key).dump(path_X)
+        X_all.get(key).dump(path_y)
 
 
     # X_all = np.vstack(rsi_samples_output)
@@ -364,13 +417,12 @@ def main(argv):
     # #y_all = np.array([x['properties']['Tomnod_label']==1 for x in js_copy['features']]).reshape(X_all.shape[0],1)
     #
     # #clean data
-    # # TODO: save out X_all, y_all -> check for html or local file path
     # X_all, y_all = clean_data(X_all, y_all)
 
     # TODO: below this goes into train model script
     #stratified split sampling
-    print "stratified split sampling"
-    X_train, X_test, y_train, y_test = train_test_split(X_all, y_all, test_size=0.20, stratify=y_all, random_state=42)
+    # print "stratified split sampling"
+    # X_train, X_test, y_train, y_test = train_test_split(X_all, y_all, test_size=0.20, stratify=y_all, random_state=42)
 
     #create, train, and test model
     # classifier = RandomForestClassifier(n_estimators=50, max_features="sqrt", max_depth=None, min_samples_split=2, bootstrap=True, n_jobs=-1)
@@ -391,7 +443,7 @@ def main(argv):
     # print blob0.shape
     #imsave('./blob0.png', blob0)
 
-    better_model = grid_search(X_train, X_test, y_train, y_test)
+    #better_model = grid_search(X_train, X_test, y_train, y_test)
 
     print "\ndone."
 
