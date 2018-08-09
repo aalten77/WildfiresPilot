@@ -18,11 +18,12 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import confusion_matrix, recall_score, precision_score, accuracy_score
 from pprint import pprint
 from scipy.misc import imsave
-from readjsonfromurl import fetch_jsons, get_remote_links
-from readjsonfromlocal import fetch_local_jsons, get_local_file_names
+from readjsonfromurl import get_json_remote
+from readjsonfromlocal import get_json_local
 from gridsearch import grid_search
 import sys, getopt
 import os
+import click
 #from PIL import Image
 gbdx = Interface()
 
@@ -88,8 +89,7 @@ def power(image, kernel):
 def calc_gabors(image, frequency=1, theta_vals=[0, 1, 2, 3]):
     # convert to gray scale
     image = image.astype(np.uint8)
-    # TODO: ask Mike if this is correct for RGB stack
-    rgb = np.dstack((image[2], image[3], image[5])) #B, G, R... correct?
+    rgb = np.dstack((image[4], image[2], image[1])) #RGB
 
     img = exposure.equalize_hist(color.rgb2gray(rgb))
     #img = exposure.equalize_hist(color.rgb2gray(image.rgb(blm=True))) #is blm necessary here?
@@ -213,29 +213,35 @@ def clean_data(X_all, y_all):
 
     return X_all, y_all
 
-def validate_jsons(js_list):
+def validate_json(js):
     flag = -999
-    ordinal = lambda n: "%d%s" % (n, "tsnrhtdd"[(n / 10 % 10 != 1) * (
-                n % 10 < 4) * n % 10::4])  # from Gareth on codegolf: https://codegolf.stackexchange.com/questions/4707/outputting-ordinal-numbers-1st-2nd-3rd#answer-4712
-    for j, js in enumerate(js_list):
-        for i, feat in enumerate(js['features']):
-            # print i
-            if feat['properties']['Tomnod_label'] != True and feat['properties']['Tomnod_label'] != False and \
-                    feat['properties']['Tomnod_label'] is not None:
-                print >> sys.stderr, "Incorrect Tomnod_label at feature element {} in {} json. Please go fix this.".format(
-                    i, ordinal(j))
-                flag = 1
 
-            try:
-                if feat['geometry']['type'] is not None and feat['geometry']['type'] != "Polygon":
-                    print >> sys.stderr, "Incorrect feature type, must be Polygon only! Discovered at feature element {} in {} json. Please go fix this.".format(
-                        i, ordinal(j + 1))
-                    flag = 1
-            except TypeError:
-                print >> sys.stderr, "If this is of any concern, a NoneType for geometry type occured at feature element {} in {} json.".format(
-                    i, ordinal(j))
-                continue
-    return flag
+    none_type_locs = []
+    for i, feat in enumerate(js['features']):
+        # print i
+        if feat['properties']['Tomnod_label'] != True and feat['properties']['Tomnod_label'] != False and \
+                feat['properties']['Tomnod_label'] is not None:
+            print >> sys.stderr, "ERROR: Incorrect Tomnod_label at feature element {}. Please go fix this.".format(
+                i)
+            flag = 1
+
+        try:
+            if feat['geometry']['type'] is not None and feat['geometry']['type'] != "Polygon":
+                print >> sys.stderr, "ERROR: Incorrect feature type, must be Polygon only! Discovered at feature element {}. Please go fix this.".format(
+                    i)
+                flag = 1
+        except TypeError:
+            print >> sys.stderr, "WARNING: a NoneType for geometry type occured at feature element {}.".format(
+                i)
+            none_type_locs.append(i)
+            continue
+
+    #remove any NoneTypes
+    if len(none_type_locs) > 0:
+        for index in sorted(none_type_locs, reverse=True):
+            del js['features'][index]
+
+    return js, flag
 
 def create_feature_dataset(rsi_samples, js):
     # entire dataset
@@ -252,161 +258,118 @@ def create_feature_dataset(rsi_samples, js):
 
     return X_all, y_all
 
-def main(argv):
+@click.command()
+@click.option('-i', type=str, help='Input geojson path (local or remote)')
+@click.option('-o', default='./', type=str, help='Path to output directory')
+@click.option('--yes', is_flag=True, help='Overwrites any files')
+def main(i, o, yes):
+    input_geojson_file = i
+    features_directory = o
 
-    features_directory = './'
-    try:
-        opts, args = getopt.getopt(argv, "ho:", ['help', 'odir='])
-    except getopt.GetoptError:
-        print >> sys.stderr, '1_geojson_to_feats.py -o <directory_for_features>'
-        sys.exit(2)
-    for opt, arg in opts:
-        if opt == '-h':
-            print '1_geojson_to_feats.py -o <directory_for_features>'
-            sys.exit()
-        elif opt in ("-o", "--odir"):
-            features_directory = arg
-
+    print "Read input file path:", input_geojson_file
     if features_directory == './':
         print 'OK, your features data will be stored in the current directory:', features_directory
     else:
         print 'OK, your features data will be stored in:', features_directory
 
-    # answer = raw_input("Do you wish to continue? (y/n)")
-    # print answer
 
-    print "\nfetching geojsons..."
-    # read jsons from remote and local
-    js_list = []
-    flag_answer = -999
-    #print ""
-    fetch_remote_answer =raw_input("Are you fetching from remote? (y/n)\n")
-    if fetch_remote_answer == 'y' or fetch_remote_answer == 'Y':
-        js_list.extend(fetch_local_jsons())
-        flag_answer = 1
-    #print ""
-    fetch_local_answer = raw_input("Are you fetching from local file system? (y/n)\n")
-    if fetch_local_answer == 'y' or fetch_local_answer == 'Y':
-        js_list.extend(fetch_jsons())
-        flag_answer = 1
+    print "\nfetching geojson..."
+    file_type = 'local' #set default to local anyway assuming not an http/https remote link
+    if os.path.exists(input_geojson_file):
+        file_type = 'local'
 
-    #print ""
-    if flag_answer != 1:
-        print >> sys.stderr, "Try again, please select where to fetch geojsons."
-        return
+    if 'http' in input_geojson_file:
+        file_type = 'remote'
+
+    if file_type == 'local':
+        js = get_json_local(input_geojson_file)
+        if js == -1:
+            if input_geojson_file.find('.') == 0:
+                new_path = input_geojson_file.replace('./', '')
+            if input_geojson_file.find('..') == 0:
+                new_path = input_geojson_file.replace('../','')
+            print >> sys.stderr, "local path not found, trying remote path:", 'https://github.com/aalten77/WildfiresPilot/raw/master/' + new_path #change the path as needed
+            js = get_json_remote('https://github.com/aalten77/WildfiresPilot/raw/master/' + new_path) #change the path as needed
+    elif file_type == 'remote':
+        js = get_json_remote(input_geojson_file)
+        if js == -1:
+            new_local_path = './'+input_geojson_file.split('/')[-1]
+            print >> sys.stderr, "remote path not found, trying local path:", new_local_path
+            js = get_json_local(new_local_path)
+    if js == -1:
+        print >> sys.stderr, "No local or remote file found."
+        sys.exit(1)
 
     print ""
 
+
     # validate json for all geometries and correct labels:
-    flag = validate_jsons(js_list)
+    js, flag = validate_json(js)
     #if flag is activated then do not execute rest
     if flag == 1:
-        return
+        sys.exit(1)
 
-    print "\nloading CatalogImages..."
-    image_list = [load_cat_image(js['properties']['catalog_id'], pan=True) for js in js_list]
-    # image = load_cat_image('1040010038A0A900', (-122.711, 38.476, -122.686, 38.494), pan=True) #fountaingrove - big
-    # print image.shape
-    # print image.ipe.metadata['image']['acquisitionDate']
-    # print image.ipe.metadata['image']['offNadirAngle']
-    # print image.affine
+    print "\nloading CatalogImage..."
+    image = load_cat_image(js['properties']['catalog_id'], pan=True)
 
-    print "current number of features:", sum(len(js['features']) for js in js_list)
+    print "current number of features:", len(js['features'])
 
     # remove any Tomnod labels that are None
     print "\nremoving Tomnod_labels = None..."
-    filtered_feats_list = []
-    for js in js_list:
-        filtered_feats = filter(lambda x: x['properties']['Tomnod_label'] != None, js['features'])
-        filtered_feats_list.append(filtered_feats)
+    filtered_feats = filter(lambda x: x['properties']['Tomnod_label'] != None, js['features'])
+    js['features'] = filtered_feats
 
-    for i, js in enumerate(js_list):
-        js['features'] = filtered_feats_list[i]
-    print "new number of features:", sum(len(js['features']) for js in js_list)
+    print "new number of features:", len(js['features'])
 
     ## load the raster, mask it by the polygon
-    print "\nmasking images..."
-    polys = {}
-    #polys = {0: geojson_to_polygons(js_list[0])}
-    # polys = geojson_to_polygons(js_list[0])
-    for i in range(0, len(js_list)):
-        polys.update({i: geojson_to_polygons(js_list[i])})
-    #     polys.extend(geojson_to_polygons(js_list[i]))
+    print "\nmasking image..."
+    polys = geojson_to_polygons(js)
+    image_aoi_segs, seg_masks = get_segment_masks(image, polys, invert=False) #toggle the inversion if necessary... remember this should be set to True for multiplying image to mask
 
-    image_segs_masks_dict = {}
-    for i in range(0, len(image_list)):
-        image_aoi_segs, seg_masks = get_segment_masks(image_list[i], polys.get(i), invert=False)
-        image_segs_masks_dict.update({i: {'segs': image_aoi_segs, 'masks': seg_masks}})
-    # image_aoi_segs, seg_masks = get_segment_masks(image, polys, invert=False) #toggle the inversion if necessary... remember this should be set to True for multiplying image to mask
-
-    image_aoi_blobs_dict = {}
-    #p = multiprocessing.Pool(processes=4)
-    for key, val in image_segs_masks_dict.iteritems():
-        #blobs_list = [p.apply_async(ma.array, args=(aoi,), kwds={'mask':np.dstack((val['masks'][i],)*8)}) for i, aoi in enumerate(val['segs'])]
-        #blobs_output = [p.get() for p in blobs_list]
-        #image_aoi_blobs_dict.update({key: blobs_output})
-        masked_array = [ma.array(aoi, mask=np.dstack((val['masks'][i],)*8)) for i, aoi in enumerate(val['segs'])]
-        image_aoi_blobs_dict.update({key: masked_array})
-    #image_aoi_blobs = [ma.array(aoi, mask=np.dstack((seg_masks[i],)*8)) for i, aoi in enumerate(image_aoi_segs)] #image masks instead of just multiplying the image to mask
+    image_aoi_blobs = [ma.array(aoi, mask=np.dstack((seg_masks[i],)*8)) for i, aoi in enumerate(image_aoi_segs)] #image masks instead of just multiplying the image to mask
     #image_aoi_blobs = [np.multiply(aoi, seg_masks[i]) for i, aoi in enumerate(image_aoi_segs)]
-    # print len(image_aoi_blobs)
-    # print image_aoi_blobs[0].shape
-    # print type(image_aoi_blobs[0])
 
     # TODO: debug masked array in segments/pixels as features, make sure the masked numbers are not playing with the computation
-    #print "\ncompute segment prediction..."
     print "\ncreating features dataset..."
     rsi_samples_output_dict = {}
     #creating segments as features
-    for key, val in image_aoi_blobs_dict.items():
-        p = multiprocessing.Pool(processes=4)
-        rsi_samples = [p.apply_async(segment_as_feature, args=(blob,), kwds={'include_gabors':True}) for blob in val]
-        rsi_samples_output = [p.get() for p in rsi_samples]
-        rsi_samples_output_dict.update({key: rsi_samples_output})
-    #print len(rsi_samples_output)
+    p = multiprocessing.Pool(processes=4)
+    rsi_samples = [p.apply_async(segment_as_feature, args=(blob,), kwds={'include_gabors': True}) for blob in image_aoi_blobs]
+    rsi_samples_output = [p.get() for p in rsi_samples]
 
     #entire dataset
-    X_all = {}
-    y_all = {}
-    for key, val in rsi_samples_output_dict.items():
-        X, y = create_feature_dataset(val, js_list[key])
-        X_all.update({key: X})
-        y_all.update({key: y})
+    X_all = np.vstack(rsi_samples_output)
+    X_all = X_all.filled() #convert to numpy ndarray
+    y_all = [x['properties']['Tomnod_label'] == 1 for x in js['features']]
+    y_all = np.array(y_all)
+    y_all.reshape(X_all.shape[0], 1)
 
-    #X_all_ordered = collections.OrderedDict(sorted(X_all.items(), key=lambda t: t[0]))
-    #y_all_ordered = collections.OrderedDict(sorted(y_all.items(), key=lambda t: t[0]))
+    # clean the data
+    X_all, y_all = clean_data(X_all, y_all)
 
     #save out the dataset
-    print "\nsaving the features to", features_directory
-    file_names = []
-    if fetch_remote_answer == 'y' or fetch_remote_answer == 'Y':
-        file_names.extend([r.split('/')[-1].replace('.json.zip','') for r in get_remote_links()])
-    if fetch_local_answer == 'y' or fetch_local_answer == 'Y':
-        file_names.extend([name.replace('.json.zip', '') for name in get_local_file_names()])
+    print "\nsaving the features to", features_directory, "\n"
     if not os.path.exists(features_directory):
         os.makedirs(features_directory)
-    for key, file_name in enumerate(file_names):
-        path_X = features_directory+'/'+file_name+'_X_all'
-        path_y = features_directory+'/'+file_name+'_y_all'
-        if os.path.isfile(path_X):
-            print ""
-            answer = raw_input(path_X + " already exists, are you sure you want to overwrite? (y/n)")
-            if answer == 'y' or answer == 'Y':
-                X_all.get(key).dump(path_X)
-                continue
-            else:
-                continue
-        if os.path.isfile(path_y):
-            print ""
-            answer = raw_input(path_y + " already exists, are you sure you want to overwrite? (y/n)")
-            if answer == 'y' or answer == 'Y':
-                X_all.get(key).dump(path_X)
-                continue
-            else:
-                continue
-        X_all.get(key).dump(path_X)
-        X_all.get(key).dump(path_y)
 
+    file_name = input_geojson_file.split('/')[-1].replace('.json.zip', '')
+    path_X = features_directory+'/'+file_name+'_X_all'
+    path_y = features_directory+'/'+file_name+'_y_all'
+    if os.path.isfile(path_X):
+        if yes:
+            np.save(path_X, X_all)
+        elif click.confirm(path_X.split('/')[-1] + " already exists, are you sure you want to overwrite?"):
+            np.save(path_X, X_all)
+    else:
+        np.save(path_X, X_all)
+    print ""
+    if os.path.isfile(path_y):
+        if yes:
+            np.save(path_y, y_all)
+        elif click.confirm(path_y.split('/')[-1] + " already exists, are you sure you want to overwrite?"):
+            np.save(path_y, y_all)
+    else:
+        np.save(path_y, y_all)
 
     # X_all = np.vstack(rsi_samples_output)
     # y_all = [x['properties']['Tomnod_label']==1 for x in js_list[0]['features']]
@@ -450,4 +413,4 @@ def main(argv):
 
 
 if __name__ == '__main__':
-    main(sys.argv[1:])
+    main()

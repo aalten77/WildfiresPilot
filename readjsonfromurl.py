@@ -10,6 +10,8 @@ def get_remote_links():
 
 def get_json_remote(link):
     r = requests.get(link)
+    if r.status_code == 404:
+        return -1
     z = zipfile.ZipFile(io.BytesIO(r.content))
     print z.printdir()
     file = z.open(link.split('/')[-1].replace('.zip',''))
