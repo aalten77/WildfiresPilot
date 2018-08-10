@@ -277,28 +277,20 @@ def main(i, o, yes):
     file_type = 'local' #set default to local anyway assuming not an http/https remote link
     if os.path.exists(input_geojson_file):
         file_type = 'local'
-
-    if 'http' in input_geojson_file:
-        file_type = 'remote'
+    else:
+        print >> sys.stderr, "No local file found at", input_geojson_file
+        if 'http' in input_geojson_file:
+            file_type = 'remote'
+        else:
+            raise ValueError("Could not identify file type as remote or local.")
 
     if file_type == 'local':
         js = get_json_local(input_geojson_file)
-        if js == -1:
-            if input_geojson_file.find('.') == 0:
-                new_path = input_geojson_file.replace('./', '')
-            if input_geojson_file.find('..') == 0:
-                new_path = input_geojson_file.replace('../','')
-            print >> sys.stderr, "local path not found, trying remote path:", 'https://github.com/aalten77/WildfiresPilot/raw/master/' + new_path #change the path as needed
-            js = get_json_remote('https://github.com/aalten77/WildfiresPilot/raw/master/' + new_path) #change the path as needed
     elif file_type == 'remote':
         js = get_json_remote(input_geojson_file)
         if js == -1:
-            new_local_path = './'+input_geojson_file.split('/')[-1]
-            print >> sys.stderr, "remote path not found, trying local path:", new_local_path
-            js = get_json_local(new_local_path)
-    if js == -1:
-        print >> sys.stderr, "No local or remote file found."
-        sys.exit(1)
+            print >> sys.stderr, "No remote file found at", input_geojson_file
+            sys.exit(1)
 
     print ""
 
