@@ -1,3 +1,10 @@
+"""""
+    Author: Ai-Linh Alten
+    Date created: 7/25/2018
+    Date last modified: 7/25/2018
+    Python Version: 2.7.15
+"""
+
 import json
 import sys, getopt
 import os

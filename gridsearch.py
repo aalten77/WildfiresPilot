@@ -1,13 +1,16 @@
-from collections import OrderedDict
-from itertools import product
-import pandas as pd
+"""""
+    Author: Ai-Linh Alten
+    Date created: 8/3/2018
+    Date last modified: 8/10/2018
+    Python Version: 2.7.15
+"""
+
 import numpy as np
 from scipy.stats import randint
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, StratifiedKFold
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import confusion_matrix, recall_score, precision_score, accuracy_score
+from sklearn.metrics import recall_score, precision_score, accuracy_score
 from time import time
-import cPickle
 
 
 def evaluate(model, test_features, test_labels):

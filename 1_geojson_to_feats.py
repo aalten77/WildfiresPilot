@@ -1,11 +1,20 @@
+"""""
+    Author: Ai-Linh Alten
+    Date created: 7/30/2018
+    Date last modified: 8/10/2018
+    Python Version: 2.7.15
+
+    This script takes geojson produced by image segmentation filter and creates dataset of remote sensing features.
+    command:
+        1_geojson_to_feats.py --help
+"""
+
 import gbdxtools
 from gbdxtools import Interface, CatalogImage
 import json
 import rasterio
 from rasterio.features import geometry_mask
-from shapely import geometry
 from shapely.geometry import shape
-import copy
 import geojson
 import numpy as np
 import numpy.ma as ma
@@ -13,18 +22,11 @@ import collections
 from scipy import ndimage as ndi
 from skimage import filters, color, exposure
 import multiprocessing
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import confusion_matrix, recall_score, precision_score, accuracy_score
-from pprint import pprint
-from scipy.misc import imsave
 from readjsonfromurl import get_json_remote
 from readjsonfromlocal import get_json_local
-from gridsearch import grid_search
-import sys, getopt
+import sys
 import os
 import click
-#from PIL import Image
 gbdx = Interface()
 
 rsi_dict = dict(arvi=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (NIR1 - (R - (B - R))) / (NIR1 + (R - (B - R))),
@@ -56,7 +58,8 @@ rsi_dict = dict(arvi=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: (NIR1 - (R - (B -
                 bri=lambda COAST, B, G, Y, R, RE, NIR1, NIR2: B/R
                 )
 def calc_rsi(image):
-    """Remote sensing indices for vegetation, built-up, and bare soil."""
+    """Remote sensing indices for vegetation, built-up, and bare soil.
+    Adapted from: https://github.com/GeoBigData/nbfirerisk/blob/master/nbfirerisk/ops.py"""
 
     # roll axes to conventional row,col,depth
     img = np.rollaxis(image, 0, 3)
@@ -80,13 +83,18 @@ def calc_rsi(image):
     return rsi
 
 def power(image, kernel):
-    # Normalize images for better comparison.
+    """Normalize images for better comparison.
+    Adapted from: https://github.com/GeoBigData/nbfirerisk/blob/master/nbfirerisk/ops.py
+    """
     image = (image - image.mean())/image.std()
     return np.sqrt(ndi.convolve(image, np.real(kernel), mode='wrap') ** 2 +
                    ndi.convolve(image, np.imag(kernel), mode='wrap') ** 2)
 
 
 def calc_gabors(image, frequency=1, theta_vals=[0, 1, 2, 3]):
+    """Calculate gabor.
+    Adapted from: https://github.com/GeoBigData/nbfirerisk/blob/master/nbfirerisk/ops.py
+    """
     # convert to gray scale
     image = image.astype(np.uint8)
     rgb = np.dstack((image[4], image[2], image[1])) #RGB
@@ -106,7 +114,9 @@ def calc_gabors(image, frequency=1, theta_vals=[0, 1, 2, 3]):
 
 def pixels_as_features(image, include_gabors=True):
     """Calculates remote sensing indices and gabor filters(optional).
-    Returns image features of image bands, remote sensing indices, and gabor filters."""
+    Returns image features of image bands, remote sensing indices, and gabor filters.
+    Adapted from: https://github.com/GeoBigData/nbfirerisk/blob/master/nbfirerisk/ops.py
+    """
 
     # roll axes to conventional row,col,depth
     img = np.rollaxis(image, 0, 3)
@@ -122,7 +132,9 @@ def pixels_as_features(image, include_gabors=True):
     return feats
 
 def segment_as_feature(image, medoid=True, normalize=False, include_gabors=False):
-
+    """Calls pixel_as_features() to get remote sensing indices and gabor filters (optional). For every segment, the median pixel is selected with the feature stack.
+    If mediod=False, then the mean features of al pixels in segment is selected.
+    """
     feats = pixels_as_features(image, include_gabors=include_gabors)
     if medoid is True:
     # NOTE: I added in this new normalize argument to handle the issue with different
@@ -145,8 +157,10 @@ def segment_as_feature(image, medoid=True, normalize=False, include_gabors=False
 
 def geojson_to_polygons(js_):
     """Convert the geojson into Shapely Polygons.
-    Keep burn scar polygons as red.
-    Mark all building polygons labelled as ('yellow', False) and will be changed later."""
+    Adapted from: https://gist.github.com/drmalex07/5a54fc4f1db06a66679e
+
+    :param js_: geojson with segments as Polygons
+    :return: list of Shapely Polygons of segments"""
 
     polys = []
     for i, feat in enumerate(js_['features']):
@@ -168,6 +182,12 @@ def geojson_to_polygons(js_):
 
 
 def get_segment_masks(image, polys, invert=True):
+    """Image masks of the segments. Converted the segment polygons to binary images.
+    :param image: CatalogImage
+    :param polys: list of segment Shapely Polygons
+    :param invert: specify whether or not to invert the image mask
+    :returns: a list of image aois given the bounds of the segment and list of segment masks
+    """
     image_aoi_segs = []
     seg_masks = []
 
@@ -183,11 +203,25 @@ def get_segment_masks(image, polys, invert=True):
     return image_aoi_segs, seg_masks
 
 def load_cat_image(catalog_id, bbox=None, pan=False):
+    """Returns the CatalogImage.
+    :param catalog_id: catalog_id that is specified in geojson
+    :type catalog_id: String
+    :param bbox: can set if needed, but not necessary
+    :param pan: usually True for pansharpened image, but can set to False if loading image takes a while
+    :return: CatalogImage"""
+
     if bbox == None:
         return CatalogImage(catalog_id, band_type="MS", pansharpen=pan)
     return CatalogImage(catalog_id, band_type="MS", pansharpen=pan, bbox=bbox)
 
 def clean_data(X_all, y_all):
+    """Clean data from any Infs or NaNs. Will delete the row from numpy matrix if found in the row.
+    :param X_all: data with remote sensing indices and gabors as filters
+    :type X_all: numpy masked array
+    :param y_all: data with True (burnt) and False (non-burnt) labels for each segment
+    :type y_all: numpy array
+    :returns: X_all and y_all. X_all is returned as np.float32"""
+
     # remove infs
     if np.any(np.any(np.isinf(X_all))):
         index_infs = np.argwhere(np.isinf(X_all))
@@ -208,17 +242,22 @@ def clean_data(X_all, y_all):
         X_all = X_all[mask_inf, :]
         y_all = np.delete(y_all, index_ls)
 
+    #set X_all to np.float32 type
     X_all = X_all.astype(np.float32)
     X_all = X_all[0:].astype(np.float32)
 
     return X_all, y_all
 
 def validate_json(js):
-    flag = -999
+    """Look for incorrect data in the geojson. Like if Tomnod_label is anything other than True/False/None or if the geometry type for every feature isn't a Polygon.
+    :param js: geojson
+    :returns: geojson and flag. If flag returns 1, then the program will exit.
+    """
 
+    flag = -999
     none_type_locs = []
     for i, feat in enumerate(js['features']):
-        # print i
+        #check for correct Tomnod_labels. If incorrect, set flag = 1
         if feat['properties']['Tomnod_label'] != True and feat['properties']['Tomnod_label'] != False and \
                 feat['properties']['Tomnod_label'] is not None:
             print >> sys.stderr, "ERROR: Incorrect Tomnod_label at feature element {}. Please go fix this.".format(
@@ -226,10 +265,12 @@ def validate_json(js):
             flag = 1
 
         try:
+            #check for geometry type. If incorrect type, set flag = 1
             if feat['geometry']['type'] is not None and feat['geometry']['type'] != "Polygon":
                 print >> sys.stderr, "ERROR: Incorrect feature type, must be Polygon only! Discovered at feature element {}. Please go fix this.".format(
                     i)
                 flag = 1
+        #if NoneType geometries detected, record index locations
         except TypeError:
             print >> sys.stderr, "WARNING: a NoneType for geometry type occured at feature element {}.".format(
                 i)
@@ -244,14 +285,17 @@ def validate_json(js):
     return js, flag
 
 def create_feature_dataset(rsi_samples, js):
+    """Create feature stack for X_all and set Tomnod_labels to boolean and store to y_all as a numpy array. Then data is cleaned by clean_data().
+    :param rsi_samples:
+    :param js: geojson with features
+    :returns: X_all and y_all"""
+
     # entire dataset
     X_all = np.vstack(rsi_samples)
-    y_all = [x['properties']['Tomnod_label'] == 1 for x in js['features']]
-    # for i in range(1, len(js_list)):
-    #     y_all.extend([x['properties']['Tomnod_label'] == 1 for x in js_list[i]['features']])
+    X_all = X_all.filled() #convert to numpy ndarray
+    y_all = [x['properties']['Tomnod_label'] == 1 for x in js['features']] #set labels to boolean instead of int
     y_all = np.array(y_all)
     y_all.reshape(X_all.shape[0], 1)
-    # y_all = np.array([x['properties']['Tomnod_label']==1 for x in js_copy['features']]).reshape(X_all.shape[0],1)
 
     # clean data
     X_all, y_all = clean_data(X_all, y_all)
@@ -263,6 +307,9 @@ def create_feature_dataset(rsi_samples, js):
 @click.option('-o', default='./', type=str, help='Path to output directory')
 @click.option('--yes', is_flag=True, help='Overwrites any files')
 def main(i, o, yes):
+    """This script will convert geojson to features and save as .npy files. You can specify input file path/remote file path for geojson and folder to save the numpy arrays to.
+    To look at options for script, run: python 1_geojson_to_feats.py --python
+    """
     input_geojson_file = i
     features_directory = o
 
@@ -273,6 +320,7 @@ def main(i, o, yes):
         print 'OK, your features data will be stored in:', features_directory
 
 
+    #fetch geojson from local path or remote path. Throw error if not found.
     print "\nfetching geojson..."
     file_type = 'local' #set default to local anyway assuming not an http/https remote link
     if os.path.exists(input_geojson_file):
@@ -294,59 +342,59 @@ def main(i, o, yes):
     print ""
 
 
+
     # validate json for all geometries and correct labels:
     js, flag = validate_json(js)
-    #if flag is activated then do not execute rest
-    if flag == 1:
+    if flag == 1: # if flag is activated then do not execute rest
         sys.exit(1)
 
+    #load CatalogImage given catalog id in geojson
     print "\nloading CatalogImage..."
     image = load_cat_image(js['properties']['catalog_id'], pan=True)
 
-    print "current number of features:", len(js['features'])
+    print "current number of features:", len(js['features']) # total features found in geojson
 
     # remove any Tomnod labels that are None
     print "\nremoving Tomnod_labels = None..."
     filtered_feats = filter(lambda x: x['properties']['Tomnod_label'] != None, js['features'])
     js['features'] = filtered_feats
 
-    print "new number of features:", len(js['features'])
+    print "new number of features:", len(js['features']) # total features after removing Tomnod labels that are None type
 
-    ## load the raster, mask it by the polygon
+    # load the raster, mask it by the polygon segment
     print "\nmasking image..."
     polys = geojson_to_polygons(js)
     image_aoi_segs, seg_masks = get_segment_masks(image, polys, invert=False) #toggle the inversion if necessary... remember this should be set to True for multiplying image to mask
+    image_aoi_blobs = [ma.array(aoi, mask=np.dstack((seg_masks[i],)*8)) for i, aoi in enumerate(image_aoi_segs)] #image masks instead of just multiplying the image to mask. image_aoi_blobs will be a list of numpy masked arrays that mask out 0 (black) pixels
 
-    image_aoi_blobs = [ma.array(aoi, mask=np.dstack((seg_masks[i],)*8)) for i, aoi in enumerate(image_aoi_segs)] #image masks instead of just multiplying the image to mask
-    #image_aoi_blobs = [np.multiply(aoi, seg_masks[i]) for i, aoi in enumerate(image_aoi_segs)]
 
     # TODO: debug masked array in segments/pixels as features, make sure the masked numbers are not playing with the computation
     print "\ncreating features dataset..."
-    rsi_samples_output_dict = {}
-    #creating segments as features
+    #creating segments as features -- use asynchronous polling to calculate features for every segment
     p = multiprocessing.Pool(processes=4)
     rsi_samples = [p.apply_async(segment_as_feature, args=(blob,), kwds={'include_gabors': True}) for blob in image_aoi_blobs]
     rsi_samples_output = [p.get() for p in rsi_samples]
 
-    #entire dataset
-    X_all = np.vstack(rsi_samples_output)
-    X_all = X_all.filled() #convert to numpy ndarray
-    y_all = [x['properties']['Tomnod_label'] == 1 for x in js['features']]
-    y_all = np.array(y_all)
-    y_all.reshape(X_all.shape[0], 1)
-
-    # clean the data
-    X_all, y_all = clean_data(X_all, y_all)
+    #create X and y dataset
+    X_all, y_all = create_feature_dataset(rsi_samples_output, js)
+    # #entire dataset
+    # X_all = np.vstack(rsi_samples_output)
+    # X_all = X_all.filled() #convert to numpy ndarray
+    # y_all = [x['properties']['Tomnod_label'] == 1 for x in js['features']]
+    # y_all = np.array(y_all)
+    # y_all.reshape(X_all.shape[0], 1)
+    #
+    # # clean the data
+    # X_all, y_all = clean_data(X_all, y_all)
 
     #save out the dataset
     print "\nsaving the features to", features_directory, "\n"
-    if not os.path.exists(features_directory):
+    if not os.path.exists(features_directory): #if path/subdirs do not exist then make them
         os.makedirs(features_directory)
-
-    file_name = input_geojson_file.split('/')[-1].split('.')[0]
-    path_X = features_directory+'/'+file_name+'_X_all'
-    path_y = features_directory+'/'+file_name+'_y_all'
-    if os.path.isfile(path_X):
+    file_name = input_geojson_file.split('/')[-1].split('.')[0] #get filename without extensions
+    path_X = features_directory+'/'+file_name+'_X_all' #new file path for X_all
+    path_y = features_directory+'/'+file_name+'_y_all' # new file path for y_all
+    if os.path.isfile(path_X): #check if X_all file already exists, then prompt for overwriting the file
         if yes:
             np.save(path_X, X_all)
         elif click.confirm(path_X.split('/')[-1] + " already exists, are you sure you want to overwrite?"):
@@ -354,7 +402,7 @@ def main(i, o, yes):
     else:
         np.save(path_X, X_all)
     print ""
-    if os.path.isfile(path_y):
+    if os.path.isfile(path_y): #check if y_all file already exists, then prompt for overwriting the file
         if yes:
             np.save(path_y, y_all)
         elif click.confirm(path_y.split('/')[-1] + " already exists, are you sure you want to overwrite?"):

@@ -1,3 +1,10 @@
+"""""
+    Author: Ai-Linh Alten
+    Date created: 8/2/2018
+    Date last modified: 8/10/2018
+    Python Version: 2.7.15
+"""
+
 import requests, zipfile, io, json
 
 remote_links = ['https://github.com/aalten77/WildfiresPilot/raw/master/data/Tubbs/Fountaingrove/Fountaingrove.json.zip',

@@ -1,8 +1,15 @@
+"""""
+    Author: Ai-Linh Alten
+    Date created: 8/6/2018
+    Date last modified: 8/10/2018
+    Python Version: 2.7.15
+"""
+
 import click
 import numpy as np
 import glob
 from sklearn.model_selection import train_test_split
-from gridsearch import grid_search, evaluate
+from gridsearch import grid_search
 from sklearn.ensemble import RandomForestClassifier
 from pathlib2 import Path
 import cPickle

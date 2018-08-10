@@ -1,3 +1,10 @@
+"""""
+    Author: Ai-Linh Alten
+    Date created: 8/7/2018
+    Date last modified: 8/10/2018
+    Python Version: 2.7.15
+"""
+
 import zipfile, json
 import os
 from os import walk
