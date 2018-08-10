@@ -88,6 +88,7 @@ def grid_search(base_model, X_train, X_test, y_train, y_test, default, random, g
     zipped_results_sorted = sorted(zipped_results, key=lambda tup:tup[0], reverse=True)[0:10] #sort and select top 10
 
     # grid search after doing random. select top choices...
+    # TODO: change the param grid after you are done fixing code
     param_grid = {'n_estimators': [int(x) for x in np.linspace(start=min(zipped_results_sorted, key=lambda t:t[1])[1], stop=max(zipped_results_sorted, key=lambda t:t[1])[1], num=3)],
                   'max_depth': [int(x) for x in np.linspace(start=min(zipped_results_sorted, key=lambda t:t[3])[3], stop=max(zipped_results_sorted, key=lambda t:t[3])[3], num=3)]
                   }
