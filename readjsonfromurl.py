@@ -8,6 +8,7 @@ remote_links = ['https://github.com/aalten77/WildfiresPilot/raw/master/data/Tubb
 def get_remote_links():
     return remote_links
 
+# TODO: also do a version without opening zip... in case json is just passed
 def get_json_remote(link):
     r = requests.get(link)
     if r.status_code == 404:

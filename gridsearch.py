@@ -1,5 +1,6 @@
 from collections import OrderedDict
 from itertools import product
+import pandas as pd
 import numpy as np
 from scipy.stats import randint
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, StratifiedKFold
@@ -22,26 +23,24 @@ def evaluate(model, test_features, test_labels):
 
     return accuracy
 
-def grid_search(X_train, X_test, y_train, y_test):
-    n_estimators = [int(x) for x in np.linspace(start = 10, stop = 2000, num = 10)]
+def grid_search(base_model, X_train, X_test, y_train, y_test, default, random, grid):
+    if default==True:
+        print "Evaluating base model..."
+        base_model.fit(X_train, y_train)
+        base_accuracy = evaluate(base_model, X_test, y_test)
+
+        return base_model
+
     # Number of features to consider at every split
     max_features = ['auto', 'sqrt']
-    # Maximum number of levels in tree
-    max_depth = [int(x) for x in np.linspace(10, 110, num = 11)]
-    max_depth.append(None)
     # Minimum number of samples required to split a node
     min_samples_split = [2, 5, 10]
     # Minimum number of samples required at each leaf node
     min_samples_leaf = [1, 2, 4]
     # Method of selecting samples for training each tree
     bootstrap = [True, False]
-    # Create the random grid
-    param_grid = {'n_estimators': n_estimators,
-                   'max_features': max_features,
-                   'max_depth': max_depth,
-                   'min_samples_split': min_samples_split,
-                   'min_samples_leaf': min_samples_leaf,
-                   'bootstrap': bootstrap}
+
+    #random grid
     param_dist = {
         'n_estimators': randint(50, 2000),
         'max_features': max_features,
@@ -51,42 +50,69 @@ def grid_search(X_train, X_test, y_train, y_test):
         'bootstrap': bootstrap
     }
 
-    # Create a base model
-    rf = RandomForestClassifier(oob_score=True, random_state=42)
-
-    # Instantiate the grid search model
+    # Instantiate the random search model
+    # TODO: ask Mike if he would like to specify n_splits/kfolds
     skf = StratifiedKFold(n_splits=3, shuffle=True, random_state=57)
-    grid_search = GridSearchCV(estimator=rf, param_grid=param_grid, cv=skf, n_jobs=-1, verbose=2, return_train_score=True)
-    #n_iter_search = 1000
-    #grid_search = GridSearchCV(estimator=rf, param_grid=param_dist, cv=10, n_jobs=-1, verbose=2, return_train_score=True)
-    #grid_search = RandomizedSearchCV(estimator=rf, param_distributions=param_dist, n_iter=n_iter_search, cv=10, verbose=2, random_state=42, n_jobs=-1)#randomized
+    #TODO: ask Mike if he would like to specifiy number of iterations
+    n_iter_search = 10
+    rand_search = RandomizedSearchCV(estimator=base_model, param_distributions=param_dist, n_iter=n_iter_search, cv=skf, verbose=2, random_state=42, n_jobs=-1)#randomized
 
     start = time()
     #Fit the grid search to the data
-    grid_search.fit(X_train, y_train)
-
+    rand_search.fit(X_train, y_train)
     print "Time to complete:", time()-start
-    #print "RandomizedSearchCV took %.2f seconds for %d candidates"
-    #" parameter settings." % ((time() - start), n_iter_search)
 
-    grid_best_params = grid_search.best_params_
-    print grid_best_params
+    rand_best_params = rand_search.best_params_
+    print rand_best_params
+
 
     #base model
     print "Evaluating base model..."
-    base_model = RandomForestClassifier(random_state=42)
     base_model.fit(X_train, y_train)
     base_accuracy = evaluate(base_model, X_test, y_test)
 
     #Evaluate best model from the grid search
-    print "Evaluating best model from grid/random search..."
-    best_grid = grid_search.best_estimator_
+    print "Evaluating best model from random search..."
+    best_grid = rand_search.best_estimator_
     grid_accuracy = evaluate(best_grid, X_test, y_test)
     print('Improvement of {:0.2f}%.'.format( 100 * (grid_accuracy - base_accuracy) / base_accuracy))
 
-    #save model
-    # TODO: allow user to name the file, remove parameters from file name
-    with open('./RF_models/RF_model_%(bootstrap)s_%(max_depth)s_%(max_features)s_%(min_samples_leaf)s_%(min_samples_split)s_%(n_estimators)s.pkl' % grid_best_params, 'wb') as pkl_file:
-        cPickle.dump(best_grid, pkl_file)
+    if random==True:
+        if (100 * (grid_accuracy - base_accuracy) / base_accuracy) <= 0:
+            return base_model
+        return best_grid
+
+    #get results from the random search to build the parameter grid
+    cv_results = rand_search.cv_results_
+    zipped_results = zip(cv_results['mean_test_score'], cv_results['param_n_estimators'], cv_results['param_max_features'], cv_results['param_max_depth'], cv_results['param_min_samples_split'], cv_results['param_min_samples_leaf'], cv_results['param_bootstrap'])
+    zipped_results_sorted = sorted(zipped_results, key=lambda tup:tup[0], reverse=True)[0:10] #sort and select top 10
+
+    # grid search after doing random. select top choices...
+    # TODO: change the param grid after you are done fixing code
+    param_grid = {'n_estimators': [int(x) for x in np.linspace(start=min(zipped_results_sorted, key=lambda t:t[1])[1], stop=max(zipped_results_sorted, key=lambda t:t[1])[1], num=3)],
+                  'max_depth': [int(x) for x in np.linspace(start=min(zipped_results_sorted, key=lambda t:t[3])[3], stop=max(zipped_results_sorted, key=lambda t:t[3])[3], num=3)]
+                  }
+    rf_grid = RandomForestClassifier(max_features=zipped_results_sorted[0][2], min_samples_split=zipped_results_sorted[0][4], min_samples_leaf=zipped_results_sorted[0][5], bootstrap=zipped_results_sorted[0][6], random_state=42)
+
+    grid_search = GridSearchCV(estimator=rf_grid, param_grid=param_grid, cv=skf, n_jobs=-1, verbose=2, return_train_score=True)
+
+    start = time()
+    # Fit the grid search to the data
+    grid_search.fit(X_train, y_train)
+    print "Time to complete:", time() - start
+
+    grid_best_params = grid_search.best_params_
+    print grid_best_params
+
+    # Evaluate best model from the grid search
+    print "Evaluating best model from grid search..."
+    best_grid = grid_search.best_estimator_
+    grid_accuracy = evaluate(best_grid, X_test, y_test)
+    print('Improvement of {:0.2f}%.'.format(100 * (grid_accuracy - base_accuracy) / base_accuracy))
+
+    if grid==True:
+        if (100 * (grid_accuracy - base_accuracy) / base_accuracy) <= 0:
+            return base_model
+        return best_grid
 
     return best_grid

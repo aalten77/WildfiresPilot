@@ -371,43 +371,6 @@ def main(i, o, yes):
     else:
         np.save(path_y, y_all)
 
-    # X_all = np.vstack(rsi_samples_output)
-    # y_all = [x['properties']['Tomnod_label']==1 for x in js_list[0]['features']]
-    # for i in range(1, len(js_list)):
-    #     y_all.extend([x['properties']['Tomnod_label']==1 for x in js_list[i]['features']])
-    # y_all = np.array(y_all)
-    # y_all.reshape(X_all.shape[0], 1)
-    # #y_all = np.array([x['properties']['Tomnod_label']==1 for x in js_copy['features']]).reshape(X_all.shape[0],1)
-    #
-    # #clean data
-    # X_all, y_all = clean_data(X_all, y_all)
-
-    # TODO: below this goes into train model script
-    #stratified split sampling
-    # print "stratified split sampling"
-    # X_train, X_test, y_train, y_test = train_test_split(X_all, y_all, test_size=0.20, stratify=y_all, random_state=42)
-
-    #create, train, and test model
-    # classifier = RandomForestClassifier(n_estimators=50, max_features="sqrt", max_depth=None, min_samples_split=2, bootstrap=True, n_jobs=-1)
-    # print "Parameters currently in use:"
-    # pprint(classifier.get_params())
-    # print "training model"
-    # classifier.fit(X_train, y_train)
-    # print classifier.score(X_train, y_train)
-    # print "testing model"
-    # predictions = classifier.predict(X_test)
-    # trues = list(np.hstack(y_test))
-    # print "\taccuracy =", accuracy_score(predictions, trues)
-    # print "\tprecision =", precision_score(predictions, trues)
-    # print "\trecall =", recall_score(predictions, trues)
-
-    #save a image segment
-    # blob0 = np.dstack((image_aoi_blobs[0][5], image_aoi_blobs[0][3], image_aoi_blobs[0][2]))
-    # print blob0.shape
-    #imsave('./blob0.png', blob0)
-
-    #better_model = grid_search(X_train, X_test, y_train, y_test)
-
     print "\ndone."
 
 
