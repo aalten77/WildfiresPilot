@@ -278,7 +278,6 @@ def main(i, o, yes):
     if os.path.exists(input_geojson_file):
         file_type = 'local'
     else:
-        print >> sys.stderr, "No local file found at", input_geojson_file
         if 'http' in input_geojson_file:
             file_type = 'remote'
         else:
@@ -344,7 +343,7 @@ def main(i, o, yes):
     if not os.path.exists(features_directory):
         os.makedirs(features_directory)
 
-    file_name = input_geojson_file.split('/')[-1].replace('.json.zip', '')
+    file_name = input_geojson_file.split('/')[-1].split('.')[0]
     path_X = features_directory+'/'+file_name+'_X_all'
     path_y = features_directory+'/'+file_name+'_y_all'
     if os.path.isfile(path_X):

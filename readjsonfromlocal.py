@@ -11,10 +11,14 @@ def get_local_file_names():
 def get_json_local(path):
     if not os.path.exists(path):
         return -1
-    z = zipfile.ZipFile(path, 'r')
-    print z.printdir()
-    file = z.open(path.split('/')[-1].replace('.zip',''))
-    js = json.load(file)
+    if path.find('.zip') != -1:
+        z = zipfile.ZipFile(path, 'r')
+        print z.printdir()
+        file = z.open(path.split('/')[-1].replace('.zip',''))
+        js = json.load(file)
+    else:
+        with open(path) as f:
+            js = json.load(f)
 
     return js
 
