@@ -377,15 +377,6 @@ def main(i, o, yes):
 
     #create X and y dataset
     X_all, y_all = create_feature_dataset(rsi_samples_output, js)
-    # #entire dataset
-    # X_all = np.vstack(rsi_samples_output)
-    # X_all = X_all.filled() #convert to numpy ndarray
-    # y_all = [x['properties']['Tomnod_label'] == 1 for x in js['features']]
-    # y_all = np.array(y_all)
-    # y_all.reshape(X_all.shape[0], 1)
-    #
-    # # clean the data
-    # X_all, y_all = clean_data(X_all, y_all)
 
     #save out the dataset
     print "\nsaving the features to", features_directory, "\n"
