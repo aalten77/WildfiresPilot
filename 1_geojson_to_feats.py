@@ -392,7 +392,9 @@ def main(i, o, yes):
             np.save(path_X, X_all)
     else:
         np.save(path_X, X_all)
+
     print ""
+
     if os.path.isfile(path_y): #check if y_all file already exists, then prompt for overwriting the file
         if yes:
             np.save(path_y, y_all)
