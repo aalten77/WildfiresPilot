@@ -16,9 +16,17 @@ def get_remote_links():
     return remote_links
 
 def get_json_remote(link):
+    """
+    Fetch json from URL.
+    :param link: remote https link to pull json. Can be .json or .json.zip extension.
+    :return: loaded json
+    """
     r = requests.get(link)
-    if r.status_code == 404:
+
+    if r.status_code == 404: #if bad request, exit
         return -1
+
+    #if the link is a zip, then unzip and load json. Else, just load the json.
     if link.find('.zip') != -1:
         z = zipfile.ZipFile(io.BytesIO(r.content))
         print z.printdir()

@@ -14,6 +14,13 @@ from time import time
 
 
 def evaluate(model, test_features, test_labels):
+    """
+    Evaluate the trained model and give accuracy, precision, and recall score.
+    :param model: trained RandomForestClassifier
+    :param test_features: test set for prediction
+    :param test_labels: ground truth
+    :return: accuracy score
+    """
     predictions = model.predict(test_features)
     trues = list(np.hstack(test_labels))
     accuracy = 100 - accuracy_score(predictions, trues)
@@ -27,6 +34,17 @@ def evaluate(model, test_features, test_labels):
     return accuracy
 
 def grid_search(base_model, X_train, X_test, y_train, y_test, modeltype, k, n_iters, n_estm_grid, n_max_depth):
+    """
+    Select model based on default RandomForestClassifier, hyperparameter tuning by random, or by grid search.
+    :param modeltype: default/random/grid
+    :param k: k splits for StratifiedKFold. k-1 folds for training, 1 fold for test.
+    :param n_iters: max iterations for RandomizedSearchCV
+    :param n_estm_grid: number of n_estimator parameters for the grid
+    :param n_max_depth: number of max_depth parameters for the grid
+    :return: best RandomForestClassifier model
+    """
+
+    # if default, just return default and print the accuracy measures
     if modeltype.lower()=='default':
         print "Evaluating base model..."
         base_model.fit(X_train, y_train)
@@ -45,20 +63,20 @@ def grid_search(base_model, X_train, X_test, y_train, y_test, modeltype, k, n_it
 
     #random grid
     param_dist = {
-        'n_estimators': randint(50, 2000),
+        'n_estimators': randint(50, 2000), #will randomly select btwn 50-2000
         'max_features': max_features,
-        'max_depth': randint(10, 110),
+        'max_depth': randint(10, 110), #will randomly select between 10,110
         'min_samples_split': min_samples_split,
         'min_samples_leaf': min_samples_leaf,
         'bootstrap': bootstrap
     }
 
     # Instantiate the random search model
-    skf = StratifiedKFold(n_splits=k, shuffle=True, random_state=57)
-    rand_search = RandomizedSearchCV(estimator=base_model, param_distributions=param_dist, n_iter=n_iters, cv=skf, verbose=2, random_state=42, n_jobs=-1)#randomized
+    skf = StratifiedKFold(n_splits=k, shuffle=True, random_state=57) #each fold is stratified
+    rand_search = RandomizedSearchCV(estimator=base_model, param_distributions=param_dist, n_iter=n_iters, cv=skf, verbose=2, random_state=42, n_jobs=-1)#randomized grid search
 
     start = time()
-    #Fit the grid search to the data
+    #Fit the random search to the data
     rand_search.fit(X_train, y_train)
     print "Time to complete:", time()-start
 
@@ -71,7 +89,7 @@ def grid_search(base_model, X_train, X_test, y_train, y_test, modeltype, k, n_it
     base_model.fit(X_train, y_train)
     base_accuracy = evaluate(base_model, X_test, y_test)
 
-    #Evaluate best model from the grid search
+    #Evaluate best model from the random search
     print "\nEvaluating best model from random search..."
     best_rand = rand_search.best_estimator_
     random_accuracy = evaluate(best_rand, X_test, y_test)
@@ -79,6 +97,7 @@ def grid_search(base_model, X_train, X_test, y_train, y_test, modeltype, k, n_it
     print('Improvement of {:0.2f}%.'.format( randbase_acc_improvement))
 
     if modeltype.lower()=='random':
+        #if random parameters didn't improve, return the base_model
         if randbase_acc_improvement <= 0:
             return base_model
         return best_rand
@@ -86,7 +105,7 @@ def grid_search(base_model, X_train, X_test, y_train, y_test, modeltype, k, n_it
     #get results from the random search to build the parameter grid
     cv_results = rand_search.cv_results_
     zipped_results = zip(cv_results['mean_test_score'], cv_results['param_n_estimators'], cv_results['param_max_features'], cv_results['param_max_depth'], cv_results['param_min_samples_split'], cv_results['param_min_samples_leaf'], cv_results['param_bootstrap'])
-    zipped_results_sorted = sorted(zipped_results, key=lambda tup:tup[0], reverse=True)[0:10] #sort and select top 10 candidates
+    zipped_results_sorted = sorted(zipped_results, key=lambda tup:tup[0], reverse=True)[0:10] #sort and select top 10 candidates from the randomized search
 
     # grid search after doing random. select top choices...
     param_grid = {'n_estimators': [int(x) for x in np.linspace(start=min(zipped_results_sorted, key=lambda t:t[1])[1], stop=max(zipped_results_sorted, key=lambda t:t[1])[1], num=n_estm_grid)],
@@ -115,7 +134,7 @@ def grid_search(base_model, X_train, X_test, y_train, y_test, modeltype, k, n_it
 
     if modeltype.lower()=='grid':
         if (gridbase_acc_improvement) <= 0: # if grid search is worse than base model
-            if randbase_acc_improvement <= 0: # if random search is worse than base model
+            if randbase_acc_improvement <= 0: # if random search is worse than base model, return base model. else return model from randomized search
                 return base_model
             else:
                 return best_rand

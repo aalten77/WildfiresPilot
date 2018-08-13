@@ -3,6 +3,10 @@
     Date created: 8/6/2018
     Date last modified: 8/10/2018
     Python Version: 2.7.15
+
+    Given directory of features, a Random Forest model is trained. You can choose hyperparameter methods such as random or grid search.
+    command:
+        2_train_model.py --help
 """
 
 import click
@@ -28,6 +32,8 @@ import sys
 @click.option('--n_max_depth', default=10, type=int, help='Choose number of parameters for max_depth to try for GridSearcCV. Default is 10 paramaters for max_depth.')
 @click.option('--yes', is_flag=True, help='Overwrites any files')
 def main(i, o, modeltype, testsize, k, n_iters, n_estm_grid, n_max_depth, yes):
+
+    # if incorrect string, exit program
     if modeltype.lower() != 'default' and modeltype.lower() != 'random' and modeltype.lower() != 'grid':
         print >> sys.stderr, "Please select 'default', 'random', or 'grid' as a parameter. "
         sys.exit(1)

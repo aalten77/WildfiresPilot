@@ -16,8 +16,17 @@ def get_local_file_names():
     return file_names
 
 def get_json_local(path):
+
+    """
+    Fetch json from local path.
+    :param path: path to json from local file system. Can be .json or .json.zip extension.
+    :return: return loaded json
+    """
+    #if the path doesn't exist then exit
     if not os.path.exists(path):
         return -1
+
+    #If path is a zip, then unzip the json. Else, load json.
     if path.find('.zip') != -1:
         z = zipfile.ZipFile(path, 'r')
         print z.printdir()
