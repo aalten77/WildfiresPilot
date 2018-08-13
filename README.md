@@ -23,7 +23,7 @@ This Notebook will give you multiple geojsons, so before heading to next steps, 
 ```
 python Combine_geojsons.py <directory_path_to_geojsons>
 ```
-After you have created the geojson, you can optionally view it in QGIS and edit the file to your needs. Relabel polygons as necessary.
+After you have created the geojson, you can optionally view it in QGIS and edit the file to your needs. Relabel polygons as necessary. Use the IDAHO Layer QGIS Plugin to view the geojson layer on the TMS of your wildfire. To find your IDAHO layer check out this link and search for your CatlogImage: https://idaho.geobigdata.io/.
 
 ## Convert Geojson to Features
 This script is used to take the labelled geojson and convert to Numpy array containing the dataset of RSI features. You can also give it a zipped geojson if your remote repository doesn't have capacity for the raw geojson data. The Numpy arrays will be saved out to your specified output directory.
