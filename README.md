@@ -15,13 +15,16 @@ I also recommend the following:
 * Pycharm or preferred IDE
 * QGIS or your preferred GIS software
 
-### Creating geojsons
+## Creating geojsons
 Follow my Python Notebook [Creating segmented geojson](https://github.com/aalten77/WildfiresPilot/blob/master/Creating%20segmented%20geojson.ipynb) to see how this is done. You may run through it and try out your own CatalogImage.
 
 This Notebook will give you multiple geojsons, so before heading to next steps, run this with the script Combine_geojsons.py to combine geojsons to one.
 ```
 python Combine_geojsons.py <directory_path_to_geojsons>
 ```
+
+## Convert geojson to features
+
 
 ## Running the tests
 
