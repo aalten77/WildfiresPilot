@@ -8,7 +8,11 @@ This project is an extension to GBDX Notebook
 
 ## Getting Started
 
-To start, you will need to install Anaconda for Python Notebook with GBDXtools virtualenv or you can work in GBDX Notebooks. To find how to set up gbdxtools locally follow this link: https://github.com/GeoBigData/gbdx-training/blob/master/gbdxtools_module/README.md
+To start, you will need to install Anaconda for Python Notebook with GBDXtools virtualenv or you can work in GBDX Notebooks. To find how to set up gbdxtools locally follow this link: https://github.com/GeoBigData/gbdx-training/tree/master/gbdxtools_module
+
+I would also recommend the following:
+* Python 2.7.15
+* QGIS or your preferred GIS software
 
 ### Prerequisites
 
