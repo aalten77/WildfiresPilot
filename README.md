@@ -22,16 +22,29 @@ This Notebook will give you multiple geojsons, so before heading to next steps, 
 ```
 python Combine_geojsons.py <directory_path_to_geojsons>
 ```
+After you have created the geojson, you can optionally view it in QGIS and edit the file to your needs. Relabel polygons as necessary.
 
 ## Convert geojson to features
-This script is used to take the labelled geojson and convert to Numpy array containing the dataset of RSI features. You can also give it a zipped geojson if your remote repository doesn't have capacity for the raw geojson data. 
+This script is used to take the labelled geojson and convert to Numpy array containing the dataset of RSI features. You can also give it a zipped geojson if your remote repository doesn't have capacity for the raw geojson data. The Numpy arrays will be saved out to your specified output directory.
 ```
 python 1_geojson_to_feats.py -i <path_to_geojson> -o <output_directory> --yes
 ```
 
-For help run the following:
+For help on the options, run the following:
 ```
 python 1_geojson_to_feats.py --help
+```
+## RF model training
+This next script will load the Numpy arrays and train the default [RandomForestClassifier](http://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html) model from sklearn. Optionally, you can toggle for Randomized search of Grid search for hyperparameter tuning. 
+
+Below is an example of the options to run with the script:
+```
+python 2_train_model.py -i <directory_path_to_numpy_feats> -o <output_model_path/model_name.pkl> --modeltype 'grid' --testsize 0.3 --k 10 --n_estm_grid 10 --n_max_depth 10 --yes
+```
+
+For help on the options, run the following: 
+```
+python 2_train_model.py --help
 ```
 
 ## Running the tests
