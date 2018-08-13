@@ -50,7 +50,7 @@ python 2_train_model.py --help
 ### Inspiration for Hyperparameter Tuning
 
 The usage of random search and grid search is proposed by William Koehrsen in his article, [Hyperparameter Tuning the Random Forest in Python](https://towardsdatascience.com/hyperparameter-tuning-the-random-forest-in-python-using-scikit-learn-28d2aa77dd74).
-
+https://github.com/aalten77/WildfiresPilot/blob/20326946146f3e3160f903c82cea666e4a21d379/gridsearch.py#L55
 ## Authors
 
 * **Ai-Linh Alten** - *Initial work* - [aalten77](https://github.com/aalten77)
