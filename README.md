@@ -50,7 +50,15 @@ python 2_train_model.py --help
 ### Inspiration for Hyperparameter Tuning
 
 The usage of random search and grid search is proposed by William Koehrsen in his article, [Hyperparameter Tuning the Random Forest in Python](https://towardsdatascience.com/hyperparameter-tuning-the-random-forest-in-python-using-scikit-learn-28d2aa77dd74).
-https://github.com/aalten77/WildfiresPilot/blob/20326946146f3e3160f903c82cea666e4a21d379/gridsearch.py#L55
+
+#### RandomSearchCV
+[Lines 55-72](https://github.com/aalten77/WildfiresPilot/blob/20326946146f3e3160f903c82cea666e4a21d379/gridsearch.py#L55) is the grid used for RandomSearchCV. RandomSearchCV will randomly pick the features in this grid to test. There are a total of 7,020,000 parameter combinations, but specificying the number of iterations will only randomly select a few of these. 
+
+[Line 75](https://github.com/aalten77/WildfiresPilot/blob/20326946146f3e3160f903c82cea666e4a21d379/gridsearch.py#L75) is  the StratifiedKFold for partitioning the dataset. The default is 3. This splits data into 2 training sets and 1 test set. Each set is stratified so that each partition replicates the overall dataset. ie. if 20% of the labels are False, then in each partition 20% will be false. 
+
+[Line 76](https://github.com/aalten77/WildfiresPilot/blob/20326946146f3e3160f903c82cea666e4a21d379/gridsearch.py#L76) instantiates RandomizedSearchCV. This takes the parameter grid and n_iters specifies the number of random parameters to train/test. ie. if n_iters = 1000, then only 1000 parameter combinations out of 7,020,000 will be randomly tried.
+
+#### GridSearchCV
 ## Authors
 
 * **Ai-Linh Alten** - *Initial work* - [aalten77](https://github.com/aalten77)
