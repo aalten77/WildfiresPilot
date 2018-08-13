@@ -57,6 +57,5 @@ The usage of random search and grid search is proposed by William Koehrsen in hi
 
 ## Acknowledgments
 
-* Hat tip to anyone whose code was used
-* Inspiration
-* etc
+* [mjgleason's](https://github.com/mjgleason) code for remote sensing indices and gabor filters: https://github.com/GeoBigData/nbfirerisk
+* [Will Koehrsen's](https://github.com/WillKoehrsen) random forest hyperparameter tuning walkthrough: https://github.com/WillKoehrsen/Machine-Learning-Projects/tree/master/random_forest_explained
