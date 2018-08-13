@@ -1,7 +1,11 @@
 # WildfiresPilot
 
 This project is an extension to GBDX Notebook 	
-[Post-Fire Damage Assessment from High Resolution Imagery](https://notebooks.geobigdata.io/hub/tutorials/5b47cfb82486966ea89b75fd?tab=code).
+[Post-Fire Damage Assessment from High Resolution Imagery](https://notebooks.geobigdata.io/hub/tutorials/5b47cfb82486966ea89b75fd?tab=code). This project will provide the following:
+1. Segment image of wildfire and convert to geojson
+2. Script to convert geojson to features for RandomForestClassifier
+3. Script to train the RandomForestClassifier and optionally use hyperparameter tuning
+
 ## Getting Started
 
 These instructions will get you a copy of the project up and running on your local machine for development and testing purposes. See deployment for notes on how to deploy the project on a live system.
