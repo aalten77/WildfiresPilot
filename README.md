@@ -10,35 +10,18 @@ This project is an extension to GBDX Notebook
 
 To start, you will need to install Anaconda for Python Notebook with GBDXtools virtualenv or you can work in GBDX Notebooks. To find how to set up gbdxtools locally follow this link: https://github.com/GeoBigData/gbdx-training/tree/master/gbdxtools_module
 
-I would also recommend the following:
+I also recommend the following:
 * Python 2.7.15
+* Pycharm or preferred IDE
 * QGIS or your preferred GIS software
 
-### Prerequisites
+### Creating geojsons
+Follow my Python Notebook [Creating segmented geojson](https://github.com/aalten77/WildfiresPilot/blob/master/Creating%20segmented%20geojson.ipynb) to see how this is done. You may run through it and try out your own CatalogImage.
 
-What things you need to install the software and how to install them
-
+This Notebook will give you multiple geojsons, so before heading to next steps, run this with the script Combine_geojsons.py to combine geojsons to one.
 ```
-Give examples
+python Combine_geojsons.py <directory_path_to_geojsons>
 ```
-
-### Installing
-
-A step by step series of examples that tell you how to get a development env running
-
-Say what the step will be
-
-```
-Give the example
-```
-
-And repeat
-
-```
-until finished
-```
-
-End with an example of getting some data out of the system or using it for a little demo
 
 ## Running the tests
 
