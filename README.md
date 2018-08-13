@@ -39,7 +39,7 @@ This next script will load the Numpy arrays and train the default [RandomForestC
 
 Below is an example of the options to run with the script:
 ```
-python 2_train_model.py -i <directory_path_to_numpy_feats> -o <output_model_path/model_name.pkl> --modeltype 'grid' --testsize 0.3 --k 10 --n_estm_grid 10 --n_max_depth 10 --yes
+python 2_train_model.py -i <directory_path_to_numpy_feats> -o <output_model_path/model_name.pkl> --modeltype default --yes
 ```
 
 For help on the options, run the following: 
@@ -58,7 +58,22 @@ The usage of random search and grid search is proposed by William Koehrsen in hi
 
 [Line 76](https://github.com/aalten77/WildfiresPilot/blob/20326946146f3e3160f903c82cea666e4a21d379/gridsearch.py#L76) instantiates RandomizedSearchCV. This takes the parameter grid and n_iters specifies the number of random parameters to train/test. ie. if n_iters = 1000, then only 1000 parameter combinations out of 7,020,000 will be randomly tried.
 
+Example to run random search: 
+```
+python 2_train_model.py -i <directory_path_to_numpy_feats> -o <output_model_path/model_name.pkl> --modeltype random --testsize 0.3 --n_iters 1000 --yes
+```
+
 #### GridSearchCV
+Because we don't exactly want to try all possible parameter candidates, I have used RandomSearch to specify the top 10 candidates with the best parameters. cv_results_ provide the candidates and their parameters. You can see this in [lines 106-108](https://github.com/aalten77/WildfiresPilot/blob/205d93467faf3195f658c409625f2f5c2f0a7515/gridsearch.py#L106). 
+
+[Lines 111-113](https://github.com/aalten77/WildfiresPilot/blob/205d93467faf3195f658c409625f2f5c2f0a7515/gridsearch.py#L111) is the parameter grid for the grid search. By default, 10 n_estimator parameters will be selected between the minimum n_estimator and maximum n_estimator from the top 10 candidates produced by RandomizedSearchCV. And same follows for the 10 max_depth parameters. By default, this makes 100 parameter combinations.
+
+[Line 116](https://github.com/aalten77/WildfiresPilot/blob/205d93467faf3195f658c409625f2f5c2f0a7515/gridsearch.py#L116) instantiates the GridSearchCV. This uses the parameter grid produced by RandomSearchCV, and uses the top candidate for max_features, min_samples_split, min_samples_leaf, and bootstrap. Given K-fold, this will create 100x*k* trials for the grid search. ie. if k=10 then there will be 1,000 parameter combinations that are tried. 
+
+Example to run grid search:
+```
+python 2_train_model.py -i <directory_path_to_numpy_feats> -o <output_model_path/model_name.pkl> --modeltype 'grid' --testsize 0.3 --k 10 --n_estm_grid 10 --n_max_depth 10 --yes
+```
 ## Authors
 
 * **Ai-Linh Alten** - *Initial work* - [aalten77](https://github.com/aalten77)
