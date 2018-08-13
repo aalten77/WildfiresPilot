@@ -1,7 +1,7 @@
 # WildfiresPilot
 
 This project is an extension to GBDX Notebook 	
-[Post-Fire Damage Assessment from High Resolution Imagery] (https://notebooks.geobigdata.io/hub/tutorials/5b47cfb82486966ea89b75fd?tab=code).
+[Post-Fire Damage Assessment from High Resolution Imagery](https://notebooks.geobigdata.io/hub/tutorials/5b47cfb82486966ea89b75fd?tab=code).
 ## Getting Started
 
 These instructions will get you a copy of the project up and running on your local machine for development and testing purposes. See deployment for notes on how to deploy the project on a live system.
