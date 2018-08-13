@@ -24,7 +24,15 @@ python Combine_geojsons.py <directory_path_to_geojsons>
 ```
 
 ## Convert geojson to features
+This script is used to take the labelled geojson and convert to Numpy array containing the dataset of RSI features. You can also give it a zipped geojson if your remote repository doesn't have capacity for the raw geojson data. 
+```
+python 1_geojson_to_feats.py -i <path_to_geojson> -o <output_directory> --yes
+```
 
+For help run the following:
+```
+python 1_geojson_to_feats.py --help
+```
 
 ## Running the tests
 
