@@ -15,7 +15,7 @@ I also recommend the following:
 * Pycharm or preferred IDE
 * QGIS or your preferred GIS software
 
-## Creating geojsons
+## Creating Geojsons
 Follow my Python Notebook [Creating segmented geojson](https://github.com/aalten77/WildfiresPilot/blob/master/Creating%20segmented%20geojson.ipynb) to see how this is done. You may run through it and try out your own CatalogImage.
 
 This Notebook will give you multiple geojsons, so before heading to next steps, run this with the script Combine_geojsons.py to combine geojsons to one.
@@ -24,7 +24,7 @@ python Combine_geojsons.py <directory_path_to_geojsons>
 ```
 After you have created the geojson, you can optionally view it in QGIS and edit the file to your needs. Relabel polygons as necessary.
 
-## Convert geojson to features
+## Convert Geojson to Features
 This script is used to take the labelled geojson and convert to Numpy array containing the dataset of RSI features. You can also give it a zipped geojson if your remote repository doesn't have capacity for the raw geojson data. The Numpy arrays will be saved out to your specified output directory.
 ```
 python 1_geojson_to_feats.py -i <path_to_geojson> -o <output_directory> --yes
@@ -34,8 +34,8 @@ For help on the options, run the following:
 ```
 python 1_geojson_to_feats.py --help
 ```
-## RF model training
-This next script will load the Numpy arrays and train the default [RandomForestClassifier](http://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html) model from sklearn. Optionally, you can toggle for Randomized search of Grid search for hyperparameter tuning. 
+## Random Forest Model Training
+This next script will load the Numpy arrays and train the default [RandomForestClassifier](http://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html) model from Scikit-learn. Optionally, you can toggle for Randomized search of Grid search for hyperparameter tuning. 
 
 Below is an example of the options to run with the script:
 ```
@@ -46,6 +46,10 @@ For help on the options, run the following:
 ```
 python 2_train_model.py --help
 ```
+
+### Inspiration for Hyperparameter Tuning
+
+The usage of random search and grid search is proposed by William Koehrsen in his article, [Hyperparameter Tuning the Random Forest in Python](https://towardsdatascience.com/hyperparameter-tuning-the-random-forest-in-python-using-scikit-learn-28d2aa77dd74).
 
 ## Authors
 
