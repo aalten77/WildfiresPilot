@@ -13,7 +13,8 @@ To start, you will need to install Anaconda for Python Notebook with GBDXtools v
 I also recommend the following:
 * Python 2.7.15
 * Pycharm or preferred IDE
-* QGIS or your preferred GIS software
+* QGIS 2.18 or your preferred GIS software
+* [IDAHO Layer QGIS Plugin](https://gbdxdocs.digitalglobe.com/docs/idaho-layers-qgis-plugin)
 
 ## Creating Geojsons
 Follow my Python Notebook [Creating segmented geojson](https://github.com/aalten77/WildfiresPilot/blob/master/Creating%20segmented%20geojson.ipynb) to see how this is done. You may run through it and try out your own CatalogImage.
