@@ -94,7 +94,7 @@ nbfootprints==0.1.0
 nbformat==4.4.0
 nblabeling==0.1.0
 networkx==2.1
-nltk==3.3
+nltk==3.4.5
 notebook==5.5.0
 numpy==1.13.1
 oauthlib==2.0.2
