@@ -66,7 +66,7 @@ ipython==5.7.0
 ipython-genutils==0.2.0
 ipywidgets==7.2.1
 itsdangerous==0.24
-Jinja2==2.10
+Jinja2==2.11.3
 jmespath==0.9.3
 jsonschema==2.6.0
 jupyter-client==5.2.3
