@@ -120,7 +120,7 @@ pyasn1-modules==0.2.2
 pycparser==2.18
 pycurl==7.43.0.2
 Pygments==2.2.0
-PyJWT==1.5.3
+PyJWT==2.4.0
 pyOpenSSL==18.0.0
 pyparsing==2.2.0
 pyproj==1.9.5.1
