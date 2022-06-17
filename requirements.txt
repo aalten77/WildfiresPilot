@@ -96,7 +96,7 @@ nblabeling==0.1.0
 networkx==2.1
 nltk==3.3
 notebook==5.5.0
-numpy==1.13.1
+numpy==1.21.0
 oauthlib==2.0.2
 olefile==0.45.1
 packaging==17.1
